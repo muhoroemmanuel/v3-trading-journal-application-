@@ -87,6 +87,8 @@ interface Trade {
   status: "open" | "closed"
   profitLoss?: number
   notes: string
+  source?: "manual" | "broker"
+  sourceName?: string
 }
 
 interface ChartDataPoint {
@@ -103,6 +105,7 @@ export default function Portfolio() {
   const [trades, setTrades] = useState<Trade[]>([])
   const [filter, setFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [sourceFilter, setSourceFilter] = useState<string>("all")
   const [importData, setImportData] = useState<string>("")
   const [showImportDialog, setShowImportDialog] = useState<boolean>(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -174,9 +177,11 @@ export default function Portfolio() {
   const filteredTrades = trades
     .filter((trade) => filter === "all" || trade.currencyPair === filter)
     .filter((trade) => statusFilter === "all" || trade.status === statusFilter)
+    .filter((trade) => sourceFilter === "all" || (sourceFilter === "manual" ? !trade.source || trade.source === "manual" : trade.sourceName === sourceFilter))
 
   // Get unique currency pairs for filter
   const uniquePairs = Array.from(new Set(trades.map((trade) => trade.currencyPair)))
+  const uniqueSources = Array.from(new Set(trades.filter((trade) => trade.sourceName).map((trade) => trade.sourceName as string)))
 
   // Prepare chart data with enhanced filtering
   const prepareChartData = (): ChartDataPoint[] => {
@@ -1379,6 +1384,18 @@ What specific area would you like to explore?`
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="source-filter">Filter by Source</Label>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger id="source-filter"><SelectValue placeholder="Filter by source" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  {uniqueSources.map((source) => <SelectItem key={source} value={source}>{source}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="status-filter">Filter by Status</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger id="status-filter">
@@ -1430,8 +1447,8 @@ What specific area would you like to explore?`
                   <CardContent className="p-3">
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <h3 className="text-base font-bold">{trade.currencyPair}</h3>
-                        <p className="text-xs text-muted-foreground">{formatDate(trade.date)}</p>
+                        <div className="flex items-center gap-2"><h3 className="text-base font-bold">{trade.currencyPair}</h3>{trade.source === "broker" && <Badge variant="outline" className="h-5 border-blue-500/30 bg-blue-500/10 px-1.5 text-[10px] text-blue-600 dark:text-blue-400">Live</Badge>}</div>
+                        <p className="text-xs text-muted-foreground">{formatDate(trade.date)}{trade.sourceName ? ` · ${trade.sourceName}` : " · Manual"}</p>
                       </div>
                       <div className="flex items-center gap-1">
                         <Badge

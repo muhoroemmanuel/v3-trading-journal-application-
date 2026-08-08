@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function Home() {
   return (
-    <main className="container mx-auto p-4 md:p-6 min-h-screen">
+    <main className="container mx-auto min-h-screen p-4 pb-24 md:p-6 md:pb-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-center">Trading Journal</h1>
         <ThemeToggle />
