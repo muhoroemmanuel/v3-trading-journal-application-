@@ -32,11 +32,8 @@ const MAX_SIZE = 10 * 1024 * 1024 // 10MB
 
 export function useImageUploads(): UseImageUploadsReturn {
   const [images, setImages] = useState<TradeImage[]>([])
-  
-  // Track all created URLs for cleanup
   const createdUrlsRef = useRef<Set<string>>(new Set())
 
-  // Cleanup on unmount — revokes ALL blob URLs we ever created
   useEffect(() => {
     return () => {
       createdUrlsRef.current.forEach((url) => {

@@ -49,6 +49,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { useImageUploads } from "@/hooks/use-image-uploads"
 
 // Define types
 interface Condition {
@@ -131,15 +132,15 @@ export default function TradeJournal() {
   // New state for journaling notes
   const [notes, setNotes] = useState<string>("")
 
-  // Image upload state
-  const [tradeImages, setTradeImages] = useState<
-    Array<{
-      id: string
-      file: File
-      preview: string
-      caption: string
-    }>
-  >([])
+  // Image upload state — now managed by custom hook with automatic cleanup
+  const {
+    images: tradeImages,
+    addImages,
+    removeImage,
+    clearAllImages,
+    updateCaption,
+    moveImage,
+  } = useImageUploads()
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null)
   const [editingCaptionText, setEditingCaptionText] = useState<string>("")
   const [selectedImageModal, setSelectedImageModal] = useState<{
@@ -436,103 +437,53 @@ export default function TradeJournal() {
     setConditions(conditions.filter((cond) => cond.id !== id))
   }
 
-  // Image upload handler
+  // Image upload handler — delegates to hook with automatic URL cleanup
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-
     if (files.length === 0) return
 
-    // Validate file types and sizes
-    const validFiles = files.filter((file) => {
-      const validTypes = [
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-        "image/gif",
-        "image/webp",
-        "image/bmp",
-        "image/svg+xml",
-        "image/tiff",
-      ]
-      const maxSize = 10 * 1024 * 1024 // 10MB
+    const { added, rejected, errors } = addImages(files)
 
-      if (!validTypes.includes(file.type)) {
-        toast({
-          title: "Invalid File Type",
-          description: `${file.name} is not a supported image format`,
-          variant: "destructive",
-        })
-        return false
-      }
+    if (added > 0) {
+      toast({
+        title: "Images Uploaded",
+        description: `${added} image(s) added to your trade journal`,
+      })
+    }
 
-      if (file.size > maxSize) {
-        toast({
-          title: "File Too Large",
-          description: `${file.name} exceeds the 10MB limit`,
-          variant: "destructive",
-        })
-        return false
-      }
-
-      return true
-    })
-
-    // Create preview URLs and add to state
-    const newImages = validFiles.map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      preview: URL.createObjectURL(file),
-      caption: "",
-    }))
-
-    setTradeImages((prev) => [...prev, ...newImages])
-
-    toast({
-      title: "Images Uploaded",
-      description: `${newImages.length} image(s) added to your trade journal`,
-    })
+    if (rejected > 0) {
+      toast({
+        title: "Some Files Rejected",
+        description: errors.join("; "),
+        variant: "destructive",
+      })
+    }
 
     // Clear the input
     e.target.value = ""
   }
 
-  // Remove image
-  const removeImage = (imageId: string) => {
-    setTradeImages((prev) => {
-      const imageToRemove = prev.find((img) => img.id === imageId)
-      if (imageToRemove) {
-        URL.revokeObjectURL(imageToRemove.preview)
-      }
-      return prev.filter((img) => img.id !== imageId)
-    })
-
+  // Remove image — hook handles URL revocation automatically
+  const handleRemoveImage = (imageId: string) => {
+    removeImage(imageId)
     toast({
       title: "Image Removed",
       description: "Image has been removed from your trade journal",
     })
   }
 
-  // Clear all images
-  const clearAllImages = () => {
-    tradeImages.forEach((image) => {
-      URL.revokeObjectURL(image.preview)
-    })
-    setTradeImages([])
-
+  // Clear all images — hook handles URL revocation automatically
+  const handleClearAllImages = () => {
+    clearAllImages()
     toast({
       title: "All Images Cleared",
       description: "All images have been removed from your trade journal",
     })
   }
 
-  // Move image position
-  const moveImage = (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= tradeImages.length) return
-
-    const newImages = [...tradeImages]
-    const [movedImage] = newImages.splice(fromIndex, 1)
-    newImages.splice(toIndex, 0, movedImage)
-    setTradeImages(newImages)
+  // Move image position — delegated to hook
+  const handleMoveImage = (fromIndex: number, toIndex: number) => {
+    moveImage(fromIndex, toIndex)
   }
 
   // Caption editing functions
@@ -545,9 +496,7 @@ export default function TradeJournal() {
   }
 
   const saveCaption = (imageId: string) => {
-    setTradeImages((prev) =>
-      prev.map((img) => (img.id === imageId ? { ...img, caption: editingCaptionText.trim() } : img)),
-    )
+    updateCaption(imageId, editingCaptionText)
     setEditingCaptionId(null)
     setEditingCaptionText("")
   }
@@ -674,7 +623,7 @@ export default function TradeJournal() {
     setTradeStatus("open")
     setExitPrice("")
     setNotes("")
-    setTradeImages([])
+    clearAllImages()
   }
 
   return (
@@ -952,7 +901,7 @@ export default function TradeJournal() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={clearAllImages}
+                      onClick={handleClearAllImages}
                       className="text-destructive hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -998,7 +947,7 @@ export default function TradeJournal() {
                             type="button"
                             variant="destructive"
                             size="sm"
-                            onClick={() => removeImage(image.id)}
+                            onClick={() => handleRemoveImage(image.id)}
                             className="h-8 px-2"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -1065,7 +1014,7 @@ export default function TradeJournal() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => moveImage(index, index - 1)}
+                              onClick={() => handleMoveImage(index, index - 1)}
                               disabled={index === 0}
                               className="h-6 w-6 p-0"
                             >
@@ -1075,7 +1024,7 @@ export default function TradeJournal() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => moveImage(index, index + 1)}
+                              onClick={() => handleMoveImage(index, index + 1)}
                               disabled={index === tradeImages.length - 1}
                               className="h-6 w-6 p-0"
                             >
@@ -1152,7 +1101,7 @@ export default function TradeJournal() {
                   <Button
                     variant="destructive"
                     onClick={() => {
-                      removeImage(selectedImageModal.id)
+                      handleRemoveImage(selectedImageModal.id)
                       setSelectedImageModal(null)
                     }}
                   >
