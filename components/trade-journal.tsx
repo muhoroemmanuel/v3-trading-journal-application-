@@ -49,8 +49,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-  import { useImageUploads } from "@/hooks/use-image-uploads"
-
+import { useImageUploads } from "@/hooks/use-image-uploads"
 
 // Define types
 interface Condition {
@@ -526,39 +525,87 @@ export default function TradeJournal() {
     return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
   }
 
+  // Validate trade inputs before saving
+  const validateTradeInputs = (): { valid: boolean; errors: string[] } => {
+    const errors: string[] = []
+
+    // Parse numbers safely
+    const entry = Number.parseFloat(entryPrice)
+    const sl = stopLossPrice ? Number.parseFloat(stopLossPrice) : 0
+    const tp = takeProfitPrice ? Number.parseFloat(takeProfitPrice) : 0
+    const size = Number.parseFloat(positionSize)
+
+    // Check for NaN and positive values
+    if (isNaN(entry) || entry <= 0) {
+      errors.push("Entry price must be a positive number")
+    }
+    if (stopLossPrice && (isNaN(sl) || sl <= 0)) {
+      errors.push("Stop loss must be a positive number")
+    }
+    if (takeProfitPrice && (isNaN(tp) || tp <= 0)) {
+      errors.push("Take profit must be a positive number")
+    }
+    if (isNaN(size) || size <= 0) {
+      errors.push("Position size (lots) must be a positive number")
+    }
+
+    // Logical price relationships for BUY
+    if (action === "buy") {
+      if (stopLossPrice && sl >= entry) {
+        errors.push("For a BUY trade, stop loss must be BELOW the entry price")
+      }
+      if (takeProfitPrice && tp <= entry) {
+        errors.push("For a BUY trade, take profit must be ABOVE the entry price")
+      }
+    }
+
+    // Logical price relationships for SELL
+    if (action === "sell") {
+      if (stopLossPrice && sl <= entry) {
+        errors.push("For a SELL trade, stop loss must be ABOVE the entry price")
+      }
+      if (takeProfitPrice && tp >= entry) {
+        errors.push("For a SELL trade, take profit must be BELOW the entry price")
+      }
+    }
+
+    // Risk/Reward warning
+    if (
+      stopLossPrice &&
+      takeProfitPrice &&
+      action &&
+      !isNaN(entry) &&
+      !isNaN(sl) &&
+      !isNaN(tp) &&
+      entry > 0
+    ) {
+      const risk = Math.abs(entry - sl)
+      const reward = Math.abs(tp - entry)
+      if (reward > 0 && risk > 0 && reward < risk) {
+        errors.push("Warning: Reward is less than risk. Consider a better risk:reward ratio")
+      }
+    }
+
+    return { valid: errors.length === 0, errors }
+  }
+
   // Save the trade
   const saveTrade = () => {
+    // Validate trade logic first
+    const { valid, errors } = validateTradeInputs()
+    if (!valid) {
+      toast({
+        title: "Validation Error",
+        description: errors.join(". "),
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!currencyPair) {
       toast({
         title: "Error",
         description: "Please select a currency pair",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!action) {
-      toast({
-        title: "Error",
-        description: "Please select an action (buy/sell)",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!entryPrice) {
-      toast({
-        title: "Error",
-        description: "Please enter an entry price",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!positionSize) {
-      toast({
-        title: "Error",
-        description: "Please enter a position size",
         variant: "destructive",
       })
       return
@@ -766,12 +813,12 @@ export default function TradeJournal() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="position-size">Position Size (Units/Lots)</Label>
+              <Label htmlFor="position-size">Position Size (Lots)</Label>
               <Input
                 id="position-size"
                 type="number"
                 step="0.01"
-                placeholder="Enter position size"
+                placeholder="Enter position size in lots"
                 value={positionSize}
                 onChange={(e) => setPositionSize(e.target.value)}
               />
