@@ -502,9 +502,7 @@ export default function TradeJournal() {
   }
 
   const saveCaption = (imageId: string) => {
-    setTradeImages((prev) =>
-      prev.map((img) => (img.id === imageId ? { ...img, caption: editingCaptionText.trim() } : img)),
-    )
+    updateCaption(imageId, editingCaptionText)
     setEditingCaptionId(null)
     setEditingCaptionText("")
   }
@@ -631,7 +629,8 @@ export default function TradeJournal() {
     setTradeStatus("open")
     setExitPrice("")
     setNotes("")
-    setTradeImages([])
+    clearAllImages()
+
   }
 
   return (
@@ -1108,10 +1107,11 @@ export default function TradeJournal() {
                   </Button>
                   <Button
                     variant="destructive"
-                    onClick={() => {
-                      removeImage(selectedImageModal.id)
+                                        onClick={() => {
+                      handleRemoveImage(selectedImageModal.id)
                       setSelectedImageModal(null)
                     }}
+
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
                     Delete Image
