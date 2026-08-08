@@ -909,7 +909,7 @@ export default function TradeJournal() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={clearAllImages}
+                      onClick={handleClearAllImages} 
                       className="text-destructive hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -955,7 +955,7 @@ export default function TradeJournal() {
                             type="button"
                             variant="destructive"
                             size="sm"
-                            onClick={() => removeImage(image.id)}
+                            onClick={() => handleRemoveImage(image.id)} 
                             className="h-8 px-2"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -1022,7 +1022,7 @@ export default function TradeJournal() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => moveImage(index, index - 1)}
+                               onClick={() => handleMoveImage(index, index - 1)} 
                               disabled={index === 0}
                               className="h-6 w-6 p-0"
                             >
@@ -1032,7 +1032,7 @@ export default function TradeJournal() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => moveImage(index, index + 1)}
+                              onClick={() => handleMoveImage(index, index + 1)} 
                               disabled={index === tradeImages.length - 1}
                               className="h-6 w-6 p-0"
                             >
