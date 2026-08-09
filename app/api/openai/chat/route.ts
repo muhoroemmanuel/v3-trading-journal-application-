@@ -90,7 +90,8 @@ Provide clear, actionable insights while always emphasizing proper risk manageme
         })),
       })
 
-      return result.toAIStreamResponse()
+      return result.toTextStreamResponse()
+
     } catch (openaiError: any) {
       console.error("OpenAI Chat Error:", openaiError)
 
