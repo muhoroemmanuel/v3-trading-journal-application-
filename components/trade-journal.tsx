@@ -626,6 +626,14 @@ export default function TradeJournal() {
       profitLoss = calculateActualPL()
     }
 
+    if (action !== "buy" && action !== "sell") {
+      toast({
+        title: "Error",
+        description: "Please select Buy or Sell",
+        variant: "destructive",
+      })
+      return
+    }
     // Update the trade object in saveTrade function to include images
     const trade: Trade = {
       id: crypto.randomUUID(),

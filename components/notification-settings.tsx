@@ -182,10 +182,6 @@ export default function NotificationSettings() {
         badge: "/favicon.ico",
         tag: "journal-reminder",
         requireInteraction: true,
-        actions: [
-          { action: "open", title: "Open Journal" },
-          { action: "dismiss", title: "Dismiss" },
-        ],
       })
 
       notification.onclick = () => {
