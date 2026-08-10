@@ -69,7 +69,9 @@ export function BrokerAccounts() {
     setAccounts((current) => current.filter((item) => item.id !== disconnecting.id)); setDisconnecting(null)
   }
 
-  const progressLabel = { connecting: "Connecting to broker...", verifying: "Verifying account...", syncing: "Syncing trade history..." }[progress]
+  const progressLabel = { idle: "", connecting: "Connecting to broker...", verifying: "Verifying account...", syncing: "Syncing trade history..." }[progress]
+
+
 
   return <div className="space-y-6">
     <div className="flex items-start justify-between gap-4"><div><h1 className="text-3xl font-bold tracking-tight">Accounts</h1><p className="mt-1 text-sm text-muted-foreground">Connect read-only broker accounts to keep your journal in sync.</p></div><Button className="min-h-11 shrink-0 gap-2" onClick={() => setShowForm(true)}><Plus className="h-4 w-4" /> <span className="hidden sm:inline">Connect</span><span className="sm:hidden">Add</span></Button></div>

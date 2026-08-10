@@ -141,6 +141,8 @@ export default function TradeJournal() {
     updateCaption,
     moveImage,
   } = useImageUploads()
+
+  
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null)
   const [editingCaptionText, setEditingCaptionText] = useState<string>("")
   const [selectedImageModal, setSelectedImageModal] = useState<{
@@ -441,16 +443,13 @@ export default function TradeJournal() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
-
     const { added, rejected, errors } = addImages(files)
-
     if (added > 0) {
       toast({
         title: "Images Uploaded",
         description: `${added} image(s) added to your trade journal`,
       })
     }
-
     if (rejected > 0) {
       toast({
         title: "Some Files Rejected",
@@ -458,11 +457,12 @@ export default function TradeJournal() {
         variant: "destructive",
       })
     }
-
     // Clear the input
     e.target.value = ""
   }
 
+
+  
   // Remove image — hook handles URL revocation automatically
   const handleRemoveImage = (imageId: string) => {
     removeImage(imageId)
@@ -472,6 +472,8 @@ export default function TradeJournal() {
     })
   }
 
+
+  
   // Clear all images — hook handles URL revocation automatically
   const handleClearAllImages = () => {
     clearAllImages()
@@ -481,10 +483,13 @@ export default function TradeJournal() {
     })
   }
 
+
+  // Move image position
   // Move image position — delegated to hook
   const handleMoveImage = (fromIndex: number, toIndex: number) => {
     moveImage(fromIndex, toIndex)
   }
+
 
   // Caption editing functions
   const startEditingCaption = (imageId: string) => {
@@ -520,39 +525,87 @@ export default function TradeJournal() {
     return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
   }
 
+  // Validate trade inputs before saving
+  const validateTradeInputs = (): { valid: boolean; errors: string[] } => {
+    const errors: string[] = []
+
+    // Parse numbers safely
+    const entry = Number.parseFloat(entryPrice)
+    const sl = stopLossPrice ? Number.parseFloat(stopLossPrice) : 0
+    const tp = takeProfitPrice ? Number.parseFloat(takeProfitPrice) : 0
+    const size = Number.parseFloat(positionSize)
+
+    // Check for NaN and positive values
+    if (isNaN(entry) || entry <= 0) {
+      errors.push("Entry price must be a positive number")
+    }
+    if (stopLossPrice && (isNaN(sl) || sl <= 0)) {
+      errors.push("Stop loss must be a positive number")
+    }
+    if (takeProfitPrice && (isNaN(tp) || tp <= 0)) {
+      errors.push("Take profit must be a positive number")
+    }
+    if (isNaN(size) || size <= 0) {
+      errors.push("Position size (lots) must be a positive number")
+    }
+
+    // Logical price relationships for BUY
+    if (action === "buy") {
+      if (stopLossPrice && sl >= entry) {
+        errors.push("For a BUY trade, stop loss must be BELOW the entry price")
+      }
+      if (takeProfitPrice && tp <= entry) {
+        errors.push("For a BUY trade, take profit must be ABOVE the entry price")
+      }
+    }
+
+    // Logical price relationships for SELL
+    if (action === "sell") {
+      if (stopLossPrice && sl <= entry) {
+        errors.push("For a SELL trade, stop loss must be ABOVE the entry price")
+      }
+      if (takeProfitPrice && tp >= entry) {
+        errors.push("For a SELL trade, take profit must be BELOW the entry price")
+      }
+    }
+
+    // Risk/Reward warning
+    if (
+      stopLossPrice &&
+      takeProfitPrice &&
+      action &&
+      !isNaN(entry) &&
+      !isNaN(sl) &&
+      !isNaN(tp) &&
+      entry > 0
+    ) {
+      const risk = Math.abs(entry - sl)
+      const reward = Math.abs(tp - entry)
+      if (reward > 0 && risk > 0 && reward < risk) {
+        errors.push("Warning: Reward is less than risk. Consider a better risk:reward ratio")
+      }
+    }
+
+    return { valid: errors.length === 0, errors }
+  }
+
   // Save the trade
   const saveTrade = () => {
+    // Validate trade logic first
+    const { valid, errors } = validateTradeInputs()
+    if (!valid) {
+      toast({
+        title: "Validation Error",
+        description: errors.join(". "),
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!currencyPair) {
       toast({
         title: "Error",
         description: "Please select a currency pair",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!action) {
-      toast({
-        title: "Error",
-        description: "Please select an action (buy/sell)",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!entryPrice) {
-      toast({
-        title: "Error",
-        description: "Please enter an entry price",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!positionSize) {
-      toast({
-        title: "Error",
-        description: "Please enter a position size",
         variant: "destructive",
       })
       return
@@ -624,6 +677,7 @@ export default function TradeJournal() {
     setExitPrice("")
     setNotes("")
     clearAllImages()
+
   }
 
   return (
@@ -759,12 +813,12 @@ export default function TradeJournal() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="position-size">Position Size (Units/Lots)</Label>
+              <Label htmlFor="position-size">Position Size (Lots)</Label>
               <Input
                 id="position-size"
                 type="number"
                 step="0.01"
-                placeholder="Enter position size"
+                placeholder="Enter position size in lots"
                 value={positionSize}
                 onChange={(e) => setPositionSize(e.target.value)}
               />
@@ -901,7 +955,7 @@ export default function TradeJournal() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={handleClearAllImages}
+                      onClick={handleClearAllImages} 
                       className="text-destructive hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -947,7 +1001,7 @@ export default function TradeJournal() {
                             type="button"
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleRemoveImage(image.id)}
+                            onClick={() => handleRemoveImage(image.id)} 
                             className="h-8 px-2"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -1014,7 +1068,7 @@ export default function TradeJournal() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleMoveImage(index, index - 1)}
+                               onClick={() => handleMoveImage(index, index - 1)} 
                               disabled={index === 0}
                               className="h-6 w-6 p-0"
                             >
@@ -1024,7 +1078,7 @@ export default function TradeJournal() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleMoveImage(index, index + 1)}
+                              onClick={() => handleMoveImage(index, index + 1)} 
                               disabled={index === tradeImages.length - 1}
                               className="h-6 w-6 p-0"
                             >
@@ -1100,10 +1154,11 @@ export default function TradeJournal() {
                   </Button>
                   <Button
                     variant="destructive"
-                    onClick={() => {
+                                        onClick={() => {
                       handleRemoveImage(selectedImageModal.id)
                       setSelectedImageModal(null)
                     }}
+
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
                     Delete Image
