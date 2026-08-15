@@ -5,10 +5,10 @@ import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { X, Plus } from "lucide-react"
-import type { ReturnType } from "./hooks/useTradeForm"
+import type { UseTradeFormReturn } from "./hooks/useTradeForm"
 
 interface Props {
-  form: ReturnType<typeof import("./hooks/useTradeForm").useTradeForm>
+  form: UseTradeFormReturn
 }
 
 export function TradeConditions({ form }: Props) {
@@ -16,7 +16,7 @@ export function TradeConditions({ form }: Props) {
     <div className="space-y-4">
       <h3 className="font-semibold">Trade Conditions</h3>
       <div className="space-y-2">
-        {form.conditions.map((condition) => (
+        {form.conditions.map((condition: typeof form.conditions[0]) => (
           <div key={condition.id} className="flex items-center gap-3 p-2 rounded-lg border">
             <Checkbox
               checked={condition.checked}

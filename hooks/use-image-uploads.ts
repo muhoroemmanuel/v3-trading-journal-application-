@@ -30,6 +30,7 @@ const VALID_TYPES = [
 ]
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
 
+
 export function useImageUploads(): UseImageUploadsReturn {
   const [images, setImages] = useState<TradeImage[]>([])
   const createdUrlsRef = useRef<Set<string>>(new Set())

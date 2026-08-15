@@ -6,10 +6,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
-import type { ReturnType } from "./hooks/useTradeForm"
+import type { UseTradeFormReturn } from "./hooks/useTradeForm"
 
 interface Props {
-  form: ReturnType<typeof import("./hooks/useTradeForm").useTradeForm>
+  form: UseTradeFormReturn
 }
 
 export function TradeForm({ form }: Props) {
@@ -24,7 +24,7 @@ export function TradeForm({ form }: Props) {
             <Select value={form.currencyPair} onValueChange={form.setCurrencyPair}>
               <SelectTrigger><SelectValue placeholder="Select pair" /></SelectTrigger>
               <SelectContent className="max-h-60">
-                {form.currencyPairs.map((pair) => (
+                {form.currencyPairs.map((pair: string) => (
                   <SelectItem key={pair} value={pair}>{pair}</SelectItem>
                 ))}
               </SelectContent>

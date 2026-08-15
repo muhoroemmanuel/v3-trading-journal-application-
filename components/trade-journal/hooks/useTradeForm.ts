@@ -60,6 +60,8 @@ const currencyPairs = [
   "AUS200", "FRA40", "EUSTX50", "NAS100", "SPX500", "HK50",
 ]
 
+export type UseTradeFormReturn = ReturnType<typeof useTradeForm>
+
 export function useTradeForm() {
   const [currencyPair, setCurrencyPair] = useState("")
   const [customPairInput, setCustomPairInput] = useState("")
@@ -194,7 +196,7 @@ export function useTradeForm() {
     return { valid: errors.length === 0, errors }
   }, [currencyPair, customPairInput, showCustomInput, action, entryPrice, stopLossPrice, takeProfitPrice, positionSize, notes, conditions])
 
-  const toTradeObject = useCallback((images?: Trade["images"]): Trade => {
+  const toTradeObject = useCallback((images?: { id: string; file: File; caption: string; preview: string }[]): Trade => {
     const profitLoss = calculateActualPL()
     return {
       id: crypto.randomUUID(),
@@ -210,7 +212,7 @@ export function useTradeForm() {
       status: tradeStatus,
       profitLoss,
       notes: notes.trim(),
-      images,
+      images: images?.map((img) => ({ id: img.id, fileName: img.file.name, fileType: img.file.type, fileSize: img.file.size, caption: img.caption, preview: img.preview })),
     }
   }, [currencyPair, customPairInput, showCustomInput, action, entryPrice, stopLossPrice, takeProfitPrice, exitPrice, positionSize, tradeStatus, notes, conditions, calculateActualPL])
 

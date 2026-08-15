@@ -14,7 +14,7 @@ import { TradeConditions } from "./TradeConditions"
 import { TradePresets } from "./TradePresets"
 import { TradeImportExport } from "./TradeImportExport"
 import { TradeImageGallery } from "./TradeImageGallery"
-import { Portfolio } from "@/components/portfolio"
+import Portfolio from "@/components/portfolio"
 
 export default function TradeJournal() {
   const [trades, setTrades] = useState<Trade[]>(() => {
@@ -84,7 +84,7 @@ export default function TradeJournal() {
         </TabsContent>
 
         <TabsContent value="portfolio">
-          <Portfolio trades={trades} />
+          <Portfolio />
         </TabsContent>
       </Tabs>
     </div>

@@ -3,10 +3,10 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { X, Camera } from "lucide-react"
-import type { ReturnType } from "@/hooks/use-image-uploads"
+import type { UseImageUploadsReturn } from "@/hooks/use-image-uploads"
 
 interface Props {
-  images: ReturnType<typeof import("@/hooks/use-image-uploads").useImageUploads>
+  images: UseImageUploadsReturn
 }
 
 export function TradeImageGallery({ images }: Props) {
@@ -14,7 +14,7 @@ export function TradeImageGallery({ images }: Props) {
     <div className="space-y-4">
       <h3 className="font-semibold">Trade Images</h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {images.images.map((img, index) => (
+        {images.images.map((img: typeof images.images[0], index: number) => (
           <div key={img.id} className="relative group">
             <img
               src={img.preview}

@@ -11,6 +11,8 @@ export interface Preset {
   createdAt: string
 }
 
+export type UseTradePresetsReturn = ReturnType<typeof useTradePresets>
+
 export function useTradePresets() {
   const [presets, setPresets] = useState<Preset[]>([])
   const [presetName, setPresetName] = useState("")

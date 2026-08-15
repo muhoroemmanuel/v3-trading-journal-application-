@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Save, Trash2, FolderOpen } from "lucide-react"
-import type { ReturnType } from "./hooks/useTradePresets"
-import type { ReturnType as FormReturnType } from "./hooks/useTradeForm"
+import type { UseTradePresetsReturn } from "./hooks/useTradePresets"
+import type { UseTradeFormReturn } from "./hooks/useTradeForm"
 
 interface Props {
-  presets: ReturnType<typeof import("./hooks/useTradePresets").useTradePresets>
-  form: FormReturnType<typeof import("./hooks/useTradeForm").useTradeForm>
+  presets: UseTradePresetsReturn
+  form: UseTradeFormReturn
 }
 
 export function TradePresets({ presets, form }: Props) {
@@ -50,7 +50,7 @@ export function TradePresets({ presets, form }: Props) {
               <DialogTitle>Load Preset</DialogTitle>
             </DialogHeader>
             <div className="space-y-2">
-              {presets.presets.map((preset) => (
+              {presets.presets.map((preset: typeof presets.presets[0]) => (
                 <div key={preset.id} className="flex items-center justify-between p-2 border rounded">
                   <div>
                     <p className="font-medium">{preset.name}</p>
