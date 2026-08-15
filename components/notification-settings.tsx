@@ -55,9 +55,10 @@ export default function NotificationSettings() {
   // Load saved settings + check for missed reminders on page load
   useEffect(() => {
     const savedSettings = localStorage.getItem("notificationSettings")
+    let parsed: any = null
     if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings)
+    try {
+        parsed = JSON.parse(savedSettings)
         setSettings((prev) => ({ ...prev, ...parsed }))
       } catch (error) {
         console.error("Error parsing saved settings:", error)
@@ -199,6 +200,7 @@ export default function NotificationSettings() {
   const sendEmailNotification = async (subject: string, body: string, type: string) => {
     if (!settings.email || !isValidEmail(settings.email)) return
 
+    let parsed: any = null
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000))
       console.log(`Email sent to ${settings.email}:`, { subject, body, type })
@@ -216,7 +218,7 @@ export default function NotificationSettings() {
 
   const togglePushNotifications = async (checked: boolean) => {
     if (checked) {
-      try {
+    try {
         if (Notification.permission !== "granted") {
           const permission = await Notification.requestPermission()
           setPushPermission(permission)
@@ -249,7 +251,7 @@ export default function NotificationSettings() {
         })
       }
     } else {
-      try {
+    try {
         await unsubscribeFromNotifications()
         clearScheduledNotifications()
         setSettings({ ...settings, pushEnabled: false })
@@ -269,6 +271,7 @@ export default function NotificationSettings() {
 
   const saveSettings = async () => {
     setSavingSettings(true)
+    let parsed: any = null
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000))
       localStorage.setItem("notificationSettings", JSON.stringify(settings))
