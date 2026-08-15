@@ -19,12 +19,10 @@ interface NotificationSettings {
   emailEnabled: boolean
   pushEnabled: boolean
   journalReminders: boolean
-
-  // Journal Reminder Settings
   journalReminderFrequency: "daily" | "weekly" | "custom"
-  journalReminderTime: string // HH:MM format
-  journalReminderDays: string[] // for weekly/custom
-  journalReminderCustomInterval: number // days for custom
+  journalReminderTime: string
+  journalReminderDays: string[]
+  journalReminderCustomInterval: number
 }
 
 const DAYS_OF_WEEK = [
@@ -43,7 +41,6 @@ export default function NotificationSettings() {
     emailEnabled: false,
     pushEnabled: false,
     journalReminders: true,
-
     journalReminderFrequency: "daily",
     journalReminderTime: "18:00",
     journalReminderDays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
@@ -55,7 +52,7 @@ export default function NotificationSettings() {
   const [sendingEmail, setSendingEmail] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
-  // Load saved settings
+  // Load saved settings + check for missed reminders on page load
   useEffect(() => {
     const savedSettings = localStorage.getItem("notificationSettings")
     if (savedSettings) {
@@ -67,14 +64,25 @@ export default function NotificationSettings() {
       }
     }
 
-    // Check if push notifications are supported
     if ("Notification" in window && "serviceWorker" in navigator && "PushManager" in window) {
       setPushSupported(true)
       setPushPermission(Notification.permission)
     }
 
-    // Initialize notification scheduling
     initializeNotificationScheduling()
+
+    // FIX: Check for missed reminders on page load (timeout IDs don't survive reloads)
+    const lastReminder = localStorage.getItem("lastJournalReminderDate")
+    const today = new Date().toDateString()
+    if (lastReminder !== today && parsed?.journalReminders) {
+      const [hours, minutes] = (parsed?.journalReminderTime || "18:00").split(":").map(Number)
+      const reminderTime = new Date()
+      reminderTime.setHours(hours, minutes, 0, 0)
+      if (Date.now() > reminderTime.getTime()) {
+        sendJournalReminder()
+        localStorage.setItem("lastJournalReminderDate", today)
+      }
+    }
   }, [])
 
   // Save settings when they change
@@ -83,95 +91,53 @@ export default function NotificationSettings() {
     scheduleNotifications()
   }, [settings])
 
-  // Initialize notification scheduling system
   const initializeNotificationScheduling = () => {
-    // Clear existing scheduled notifications
     clearScheduledNotifications()
-
-    // Schedule new notifications based on current settings
     scheduleNotifications()
   }
 
-  // Clear all scheduled notifications
+  // FIX: Removed broken localStorage timeout clearing — timeout IDs are invalid after page reload
   const clearScheduledNotifications = () => {
-    // Clear journal reminder intervals
-    const journalIntervalId = localStorage.getItem("journalReminderInterval")
-    if (journalIntervalId) {
-      clearInterval(Number(journalIntervalId))
-      localStorage.removeItem("journalReminderInterval")
-    }
-
-    // Clear economic event timeouts
-    const eventTimeouts = JSON.parse(localStorage.getItem("economicEventTimeouts") || "[]")
-    eventTimeouts.forEach((timeoutId: number) => clearTimeout(timeoutId))
+    localStorage.removeItem("journalReminderInterval")
+    localStorage.removeItem("journalReminderTimeouts")
     localStorage.removeItem("economicEventTimeouts")
   }
 
-  // Schedule notifications based on current settings
   const scheduleNotifications = () => {
     if (!settings.pushEnabled && !settings.emailEnabled) return
-
-    // Schedule journal reminders
     if (settings.journalReminders) {
       scheduleJournalReminders()
     }
   }
 
-  // Schedule journal reminders
+  // FIX: Replaced broken timeout-ID-in-localStorage with simple setTimeout
   const scheduleJournalReminders = () => {
+    localStorage.removeItem("journalReminderTimeouts")
+    localStorage.removeItem("journalReminderInterval")
+
     const now = new Date()
     const [hours, minutes] = settings.journalReminderTime.split(":").map(Number)
 
     const nextReminderTime = new Date()
     nextReminderTime.setHours(hours, minutes, 0, 0)
 
-    // If the time has passed today, schedule for tomorrow
     if (nextReminderTime <= now) {
       nextReminderTime.setDate(nextReminderTime.getDate() + 1)
     }
 
-    const scheduleNextReminder = () => {
-      const timeUntilReminder = nextReminderTime.getTime() - Date.now()
+    const timeUntilReminder = nextReminderTime.getTime() - Date.now()
 
-      if (timeUntilReminder > 0) {
-        const timeoutId = setTimeout(() => {
-          sendJournalReminder()
-
-          // Schedule next reminder based on frequency
-          switch (settings.journalReminderFrequency) {
-            case "daily":
-              nextReminderTime.setDate(nextReminderTime.getDate() + 1)
-              break
-            case "weekly":
-              nextReminderTime.setDate(nextReminderTime.getDate() + 7)
-              break
-            case "custom":
-              nextReminderTime.setDate(nextReminderTime.getDate() + settings.journalReminderCustomInterval)
-              break
-          }
-
-          scheduleNextReminder()
-        }, timeUntilReminder)
-
-        // Store timeout ID for cleanup
-        const timeouts = JSON.parse(localStorage.getItem("journalReminderTimeouts") || "[]")
-        timeouts.push(timeoutId)
-        localStorage.setItem("journalReminderTimeouts", JSON.stringify(timeouts))
-      }
-    }
-
-    // Check if today is a valid reminder day for weekly/custom frequencies
-    const today = now.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase()
-    const shouldRemindToday =
-      settings.journalReminderFrequency === "daily" || settings.journalReminderDays.includes(today)
-
-    if (shouldRemindToday) {
-      scheduleNextReminder()
+    if (timeUntilReminder > 0) {
+      setTimeout(() => {
+        sendJournalReminder()
+      }, timeUntilReminder)
     }
   }
 
-  // Send journal reminder notification
+  // FIX: Track last reminder date so we can detect missed ones on page load
   const sendJournalReminder = () => {
+    localStorage.setItem("lastJournalReminderDate", new Date().toDateString())
+
     const title = "📝 Trading Journal Reminder"
     const body = "Don't forget to log your trades and reflect on your trading performance today!"
 
@@ -186,14 +152,10 @@ export default function NotificationSettings() {
 
       notification.onclick = () => {
         window.focus()
-        // Navigate to journal tab if possible
-        const event = new CustomEvent("navigate-to-journal")
-        window.dispatchEvent(event)
         notification.close()
       }
     }
 
-    // Send email reminder if enabled
     if (settings.emailEnabled && settings.email) {
       sendEmailNotification(title, body, "journal-reminder")
     }
@@ -204,12 +166,10 @@ export default function NotificationSettings() {
     })
   }
 
-  // Handle email change
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSettings({ ...settings, email: e.target.value })
   }
 
-  // Toggle email notifications
   const toggleEmailNotifications = (checked: boolean) => {
     if (checked && !isValidEmail(settings.email)) {
       toast({
@@ -228,7 +188,6 @@ export default function NotificationSettings() {
         description: "You will now receive email notifications",
       })
 
-      // Send welcome email
       sendEmailNotification(
         "Welcome to Trading Journal Notifications",
         "You have successfully enabled email notifications for your trading journal. You'll receive economic event alerts and journal reminders based on your preferences.",
@@ -237,18 +196,13 @@ export default function NotificationSettings() {
     }
   }
 
-  // Send email notification (simulated)
   const sendEmailNotification = async (subject: string, body: string, type: string) => {
     if (!settings.email || !isValidEmail(settings.email)) return
 
     try {
-      // In a real application, this would be a server action or API call
-      // For demo purposes, we'll simulate a network request
       await new Promise((resolve) => setTimeout(resolve, 1000))
-
       console.log(`Email sent to ${settings.email}:`, { subject, body, type })
 
-      // Show success toast for important notifications
       if (type === "economic-event" || type === "journal-reminder") {
         toast({
           title: "Email Sent",
@@ -260,11 +214,9 @@ export default function NotificationSettings() {
     }
   }
 
-  // Toggle push notifications
   const togglePushNotifications = async (checked: boolean) => {
     if (checked) {
       try {
-        // Request permission if not already granted
         if (Notification.permission !== "granted") {
           const permission = await Notification.requestPermission()
           setPushPermission(permission)
@@ -279,7 +231,6 @@ export default function NotificationSettings() {
           }
         }
 
-        // Subscribe to push notifications
         await subscribeToNotifications()
 
         setSettings({ ...settings, pushEnabled: true })
@@ -288,24 +239,19 @@ export default function NotificationSettings() {
           description: "You will now receive push notifications",
         })
 
-        // Initialize notification scheduling
         scheduleNotifications()
       } catch (error) {
         console.error("Error subscribing to push notifications:", error)
         toast({
           title: "Subscription Failed",
-          description: "Could not subscribe to push notifications",
+          description: "Failed to enable push notifications. Please try again.",
           variant: "destructive",
         })
       }
     } else {
       try {
-        // Unsubscribe from push notifications
         await unsubscribeFromNotifications()
-
-        // Clear scheduled notifications
         clearScheduledNotifications()
-
         setSettings({ ...settings, pushEnabled: false })
         toast({
           title: "Push Notifications Disabled",
@@ -317,21 +263,15 @@ export default function NotificationSettings() {
     }
   }
 
-  // Update settings
   const updateSettings = (updates: Partial<NotificationSettings>) => {
     setSettings((prev) => ({ ...prev, ...updates }))
   }
 
-  // Save settings
   const saveSettings = async () => {
     setSavingSettings(true)
     try {
-      // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1000))
-
       localStorage.setItem("notificationSettings", JSON.stringify(settings))
-
-      // Reschedule notifications with new settings
       clearScheduledNotifications()
       scheduleNotifications()
 
@@ -350,12 +290,10 @@ export default function NotificationSettings() {
     }
   }
 
-  // Validate email
   const isValidEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 
-  // Test notification
   const sendTestNotification = (type: "journal") => {
     if (!settings.pushEnabled && !settings.emailEnabled) {
       toast({
@@ -365,7 +303,6 @@ export default function NotificationSettings() {
       })
       return
     }
-
     sendJournalReminder()
   }
 
@@ -382,7 +319,6 @@ export default function NotificationSettings() {
       </CardHeader>
 
       <CardContent className="space-y-8">
-        {/* Basic Notification Settings */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -437,7 +373,6 @@ export default function NotificationSettings() {
 
         <Separator />
 
-        {/* Journal Reminders */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -534,7 +469,6 @@ export default function NotificationSettings() {
 
         <Separator />
 
-        {/* Save Settings */}
         <div className="flex justify-between items-center pt-4">
           <div className="text-sm text-muted-foreground">Settings are automatically saved when changed</div>
           <Button onClick={saveSettings} disabled={savingSettings} className="flex items-center gap-2">
@@ -552,7 +486,6 @@ export default function NotificationSettings() {
           </Button>
         </div>
 
-        {/* Notification Status Summary */}
         <div className="bg-muted/50 p-4 rounded-lg">
           <h4 className="font-medium mb-3">Notification Status Summary</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
