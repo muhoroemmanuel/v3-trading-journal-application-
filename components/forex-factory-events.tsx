@@ -71,7 +71,6 @@ export default function ForexFactoryEvents() {
   // Filter states
   const [currencyFilter, setCurrencyFilter] = useState("all")
   const [impactFilter, setImpactFilter] = useState("all")
-  const [dateFilter, setDateFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [sortBy, setSortBy] = useState<"time" | "impact" | "currency" | "event">("time")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
@@ -214,7 +213,7 @@ export default function ForexFactoryEvents() {
     })
 
     setFilteredEvents(filtered)
-  }, [events, currencyFilter, impactFilter, dateFilter, searchTerm, sortBy, sortOrder])
+  }, [events, currencyFilter, impactFilter, searchTerm, sortBy, sortOrder])
 
   // AI Analysis Functions
   const analyzeEvents = async (analysisType: "summarize" | "sentiment" | "context") => {
