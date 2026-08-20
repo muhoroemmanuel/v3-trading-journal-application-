@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,7 +63,7 @@ interface AIAnalysis {
 
 export default function ForexFactoryEvents() {
   const [events, setEvents] = useState<EconomicEvent[]>([])
-  const [filteredEvents, setFilteredEvents] = useState<EconomicEvent[]>([])
+  // filteredEvents is derived from events/filters below via useMemo — no state needed
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -156,8 +156,9 @@ export default function ForexFactoryEvents() {
     loadEvents()
   }, [])
 
-  // Filter and sort events
-  useEffect(() => {
+  // Filter and sort events — derived during render, not in an effect,
+  // so filtering doesn't cost an extra render pass every time it changes.
+  const filteredEvents = useMemo(() => {
     let filtered = [...events]
 
     // Apply filters
@@ -212,7 +213,7 @@ export default function ForexFactoryEvents() {
       }
     })
 
-    setFilteredEvents(filtered)
+    return filtered
   }, [events, currencyFilter, impactFilter, searchTerm, sortBy, sortOrder])
 
   // AI Analysis Functions

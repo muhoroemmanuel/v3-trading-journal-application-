@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -173,18 +173,31 @@ export default function Portfolio() {
     }
   }, [])
 
-  // Filter trades based on selection
-  const filteredTrades = trades
-    .filter((trade) => filter === "all" || trade.currencyPair === filter)
-    .filter((trade) => statusFilter === "all" || trade.status === statusFilter)
-    .filter((trade) => sourceFilter === "all" || (sourceFilter === "manual" ? !trade.source || trade.source === "manual" : trade.sourceName === sourceFilter))
+  // Filter trades based on selection — memoized so this only recomputes
+  // when trades or the active filters actually change, not on every render.
+  const filteredTrades = useMemo(
+    () =>
+      trades
+        .filter((trade) => filter === "all" || trade.currencyPair === filter)
+        .filter((trade) => statusFilter === "all" || trade.status === statusFilter)
+        .filter(
+          (trade) =>
+            sourceFilter === "all" ||
+            (sourceFilter === "manual" ? !trade.source || trade.source === "manual" : trade.sourceName === sourceFilter),
+        ),
+    [trades, filter, statusFilter, sourceFilter],
+  )
 
   // Get unique currency pairs for filter
-  const uniquePairs = Array.from(new Set(trades.map((trade) => trade.currencyPair)))
-  const uniqueSources = Array.from(new Set(trades.filter((trade) => trade.sourceName).map((trade) => trade.sourceName as string)))
+  const uniquePairs = useMemo(() => Array.from(new Set(trades.map((trade) => trade.currencyPair))), [trades])
+  const uniqueSources = useMemo(
+    () => Array.from(new Set(trades.filter((trade) => trade.sourceName).map((trade) => trade.sourceName as string))),
+    [trades],
+  )
 
-  // Prepare chart data with enhanced filtering
-  const prepareChartData = (): ChartDataPoint[] => {
+  // Prepare chart data with enhanced filtering — memoized: this does a sort
+  // plus several filter passes, so it's worth skipping on unrelated re-renders.
+  const chartData = useMemo((): ChartDataPoint[] => {
     let tradesWithPL = trades.filter((trade) => trade.profitLoss !== undefined && trade.profitLoss !== null)
 
     // If no trades with P/L, return empty array
@@ -238,12 +251,11 @@ export default function Portfolio() {
         tradeNumber: index + 1,
       }
     })
-  }
+  }, [trades, chartFilter, timeFilter])
 
-  const chartData = prepareChartData()
-
-  // Calculate portfolio statistics
-  const calculateStats = () => {
+  // Calculate portfolio statistics — memoized: several filter/reduce passes
+  // plus a sort over all trades, so it should only rerun when trades change.
+  const stats = useMemo(() => {
     const tradesWithPL = trades.filter((trade) => trade.profitLoss !== undefined)
     const totalPL = tradesWithPL.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0)
     const winningTrades = tradesWithPL.filter((trade) => (trade.profitLoss || 0) > 0)
@@ -289,12 +301,10 @@ export default function Portfolio() {
       maxDrawdown,
       profitFactor: avgLoss !== 0 ? Math.abs((avgWin * winningTrades.length) / (avgLoss * losingTrades.length)) : 0,
     }
-  }
-
-  const stats = calculateStats()
+  }, [trades])
 
   // Calculate portfolio performance relative to initial capital
-  const calculatePortfolioPerformance = () => {
+  const portfolioPerformance = useMemo(() => {
     if (initialCapital <= 0) return null
 
     const totalPL = stats.totalPL
@@ -308,9 +318,7 @@ export default function Portfolio() {
       performancePercent,
       currency: initialCapitalCurrency,
     }
-  }
-
-  const portfolioPerformance = calculatePortfolioPerformance()
+  }, [initialCapital, stats.totalPL, initialCapitalCurrency])
 
   // Validate capital input
   const validateCapitalInput = (amount: string, currency: string): { amount?: string; currency?: string } => {
@@ -1206,7 +1214,7 @@ What specific area would you like to explore?`
                     To see your performance chart, you need to add Profit/Loss data to your trades.
                   </p>
                   <p className="text-xs">
-                    Go to your trade cards below and click "Add P/L" or edit existing P/L values.
+                    Go to your trade cards below and click &quot;Add P/L&quot; or edit existing P/L values.
                   </p>
                 </div>
               ) : (
@@ -1736,7 +1744,7 @@ What specific area would you like to explore?`
                           Welcome to Trading Support!
                         </h4>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                          I'm here to help with trading questions and provide emotional support during your trading
+                          I&apos;m here to help with trading questions and provide emotional support during your trading
                           journey.
                         </p>
                         <div className="grid grid-cols-1 gap-2 text-xs">
@@ -1924,7 +1932,7 @@ What specific area would you like to explore?`
                           Welcome to Trading Support!
                         </h4>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                          I'm here to help with trading questions and provide emotional support.
+                          I&apos;m here to help with trading questions and provide emotional support.
                         </p>
                       </div>
                     )}

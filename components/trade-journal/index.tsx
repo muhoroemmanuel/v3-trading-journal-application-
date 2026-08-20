@@ -16,7 +16,14 @@ import { TradeConditions } from "./TradeConditions"
 import { TradePresets } from "./TradePresets"
 import { TradeImportExport } from "./TradeImportExport"
 import { TradeImageGallery } from "./TradeImageGallery"
-import Portfolio from "@/components/portfolio"
+import dynamic from "next/dynamic"
+
+// Same heavy (recharts) component as app/page.tsx's Portfolio tab — code-split
+// here too, and skip SSR since it only renders after a client-side tab click.
+const Portfolio = dynamic(() => import("@/components/portfolio"), {
+  loading: () => <div className="p-6 text-sm text-muted-foreground">Loading portfolio…</div>,
+  ssr: false,
+})
 
 // Mapper: form Trade (camelCase) → DB format (snake_case)
 function toDbTrade(trade: FormTrade) {

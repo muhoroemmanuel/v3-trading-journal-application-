@@ -52,6 +52,103 @@ export default function NotificationSettings() {
   const [sendingEmail, setSendingEmail] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
+  // Declared above the effects that call them (initializeNotificationScheduling /
+  // sendJournalReminder / scheduleNotifications) so they're available without
+  // relying on closures over not-yet-initialized const bindings.
+  const clearScheduledNotifications = () => {
+    localStorage.removeItem("journalReminderInterval")
+    localStorage.removeItem("journalReminderTimeouts")
+    localStorage.removeItem("economicEventTimeouts")
+  }
+
+  const sendEmailNotification = async (subject: string, body: string, type: string) => {
+    if (!settings.email || !isValidEmail(settings.email)) return
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      console.log(`Email sent to ${settings.email}:`, { subject, body, type })
+
+      if (type === "economic-event" || type === "journal-reminder") {
+        toast({
+          title: "Email Sent",
+          description: `Notification email sent to ${settings.email}`,
+        })
+      }
+    } catch (error) {
+      console.error("Error sending email:", error)
+    }
+  }
+
+  const isValidEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  const sendJournalReminder = () => {
+    localStorage.setItem("lastJournalReminderDate", new Date().toDateString())
+
+    const title = "📝 Trading Journal Reminder"
+    const body = "Don't forget to log your trades and reflect on your trading performance today!"
+
+    if (settings.pushEnabled && Notification.permission === "granted") {
+      const notification = new Notification(title, {
+        body,
+        icon: "/favicon.ico",
+        badge: "/favicon.ico",
+        tag: "journal-reminder",
+        requireInteraction: true,
+      })
+
+      notification.onclick = () => {
+        window.focus()
+        notification.close()
+      }
+    }
+
+    if (settings.emailEnabled && settings.email) {
+      sendEmailNotification(title, body, "journal-reminder")
+    }
+
+    toast({
+      title: "Journal Reminder",
+      description: "Time to update your trading journal!",
+    })
+  }
+
+  const scheduleJournalReminders = () => {
+    localStorage.removeItem("journalReminderTimeouts")
+    localStorage.removeItem("journalReminderInterval")
+
+    const now = new Date()
+    const [hours, minutes] = settings.journalReminderTime.split(":").map(Number)
+
+    const nextReminderTime = new Date()
+    nextReminderTime.setHours(hours, minutes, 0, 0)
+
+    if (nextReminderTime <= now) {
+      nextReminderTime.setDate(nextReminderTime.getDate() + 1)
+    }
+
+    const timeUntilReminder = nextReminderTime.getTime() - Date.now()
+
+    if (timeUntilReminder > 0) {
+      setTimeout(() => {
+        sendJournalReminder()
+      }, timeUntilReminder)
+    }
+  }
+
+  const scheduleNotifications = () => {
+    if (!settings.pushEnabled && !settings.emailEnabled) return
+    if (settings.journalReminders) {
+      scheduleJournalReminders()
+    }
+  }
+
+  const initializeNotificationScheduling = () => {
+    clearScheduledNotifications()
+    scheduleNotifications()
+  }
+
   // Load saved settings + check for missed reminders on page load
   useEffect(() => {
     const savedSettings = localStorage.getItem("notificationSettings")
@@ -92,81 +189,6 @@ export default function NotificationSettings() {
     scheduleNotifications()
   }, [settings])
 
-  const initializeNotificationScheduling = () => {
-    clearScheduledNotifications()
-    scheduleNotifications()
-  }
-
-  // FIX: Removed broken localStorage timeout clearing — timeout IDs are invalid after page reload
-  const clearScheduledNotifications = () => {
-    localStorage.removeItem("journalReminderInterval")
-    localStorage.removeItem("journalReminderTimeouts")
-    localStorage.removeItem("economicEventTimeouts")
-  }
-
-  const scheduleNotifications = () => {
-    if (!settings.pushEnabled && !settings.emailEnabled) return
-    if (settings.journalReminders) {
-      scheduleJournalReminders()
-    }
-  }
-
-  // FIX: Replaced broken timeout-ID-in-localStorage with simple setTimeout
-  const scheduleJournalReminders = () => {
-    localStorage.removeItem("journalReminderTimeouts")
-    localStorage.removeItem("journalReminderInterval")
-
-    const now = new Date()
-    const [hours, minutes] = settings.journalReminderTime.split(":").map(Number)
-
-    const nextReminderTime = new Date()
-    nextReminderTime.setHours(hours, minutes, 0, 0)
-
-    if (nextReminderTime <= now) {
-      nextReminderTime.setDate(nextReminderTime.getDate() + 1)
-    }
-
-    const timeUntilReminder = nextReminderTime.getTime() - Date.now()
-
-    if (timeUntilReminder > 0) {
-      setTimeout(() => {
-        sendJournalReminder()
-      }, timeUntilReminder)
-    }
-  }
-
-  // FIX: Track last reminder date so we can detect missed ones on page load
-  const sendJournalReminder = () => {
-    localStorage.setItem("lastJournalReminderDate", new Date().toDateString())
-
-    const title = "📝 Trading Journal Reminder"
-    const body = "Don't forget to log your trades and reflect on your trading performance today!"
-
-    if (settings.pushEnabled && Notification.permission === "granted") {
-      const notification = new Notification(title, {
-        body,
-        icon: "/favicon.ico",
-        badge: "/favicon.ico",
-        tag: "journal-reminder",
-        requireInteraction: true,
-      })
-
-      notification.onclick = () => {
-        window.focus()
-        notification.close()
-      }
-    }
-
-    if (settings.emailEnabled && settings.email) {
-      sendEmailNotification(title, body, "journal-reminder")
-    }
-
-    toast({
-      title: "Journal Reminder",
-      description: "Time to update your trading journal!",
-    })
-  }
-
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSettings({ ...settings, email: e.target.value })
   }
@@ -194,25 +216,6 @@ export default function NotificationSettings() {
         "You have successfully enabled email notifications for your trading journal. You'll receive economic event alerts and journal reminders based on your preferences.",
         "welcome",
       )
-    }
-  }
-
-  const sendEmailNotification = async (subject: string, body: string, type: string) => {
-    if (!settings.email || !isValidEmail(settings.email)) return
-
-    let parsed: any = null
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      console.log(`Email sent to ${settings.email}:`, { subject, body, type })
-
-      if (type === "economic-event" || type === "journal-reminder") {
-        toast({
-          title: "Email Sent",
-          description: `Notification email sent to ${settings.email}`,
-        })
-      }
-    } catch (error) {
-      console.error("Error sending email:", error)
     }
   }
 
@@ -293,10 +296,6 @@ export default function NotificationSettings() {
     }
   }
 
-  const isValidEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  }
-
   const sendTestNotification = (type: "journal") => {
     if (!settings.pushEnabled && !settings.emailEnabled) {
       toast({
@@ -344,7 +343,7 @@ export default function NotificationSettings() {
               value={settings.email}
               onChange={handleEmailChange}
             />
-            <p className="text-sm text-muted-foreground">We'll send notifications to this email address</p>
+            <p className="text-sm text-muted-foreground">We&apos;ll send notifications to this email address</p>
           </div>
 
           <div className="flex items-center justify-between">
