@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import type React from "react"
 
 import { useState, useEffect, useMemo } from "react"
+import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -743,145 +744,116 @@ export default function Portfolio() {
     reader.readAsText(file)
   }
 
-  // Handle sending a message to the AI
+  // Load coach conversation history so it follows the user across devices
+  // (stored in Supabase coach_messages, not localStorage).
+  useEffect(() => {
+    let cancelled = false
+    const loadHistory = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+      try {
+        const res = await fetch("/api/coach/chat", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+        if (!res.ok) return
+        const { messages } = await res.json()
+        if (!cancelled && Array.isArray(messages) && messages.length > 0) {
+          setChatMessages(messages.map((m: any) => ({ role: m.role, content: m.content })))
+        }
+      } catch {
+        // Silent — history is a nice-to-have, not required to use the coach.
+      }
+    }
+    loadHistory()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Handle sending a message to the AI trading coach. This calls a real,
+  // authenticated backend (/api/coach/chat) that pulls the user's actual
+  // trade history from Supabase, runs behavioral-pattern analysis on it
+  // (see lib/trading-psychology.ts), and streams a grounded response from
+  // OpenAI — rather than matching keywords against canned strings.
   const sendMessage = async () => {
     if (!userInput.trim()) return
 
-    // Add user message to chat
     const newMessage = { role: "user" as const, content: userInput }
-    setChatMessages([...chatMessages, newMessage])
-    const currentInput = userInput
+    const nextMessages = [...chatMessages, newMessage]
+    setChatMessages(nextMessages)
     setUserInput("")
     setIsLoading(true)
 
     try {
-      // Enhanced responses for emotional support and trading assistance
-      setTimeout(() => {
-        let response = ""
-        const input = currentInput.toLowerCase()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-        // Emotional Support Responses
-        if (input.includes("stress") || input.includes("anxious") || input.includes("worried")) {
-          response = `I understand trading can be stressful. Here are some ways to manage trading stress:
-
-🧘 **Take a Break**: Step away from the charts for a few minutes
-💪 **Risk Management**: Only risk what you can afford to lose
-📊 **Review Your Plan**: Stick to your trading strategy
-🎯 **Focus on Process**: Control what you can control - your decisions
-
-Remember, every trader faces losses. It's part of the journey. What matters is learning from each trade and maintaining emotional balance.`
-        } else if (input.includes("loss") || input.includes("losing") || input.includes("lost money")) {
-          response = `Losses are tough, but they're also learning opportunities. Here's how to handle them:
-
-📈 **Analyze the Trade**: What went wrong? Was it the strategy or execution?
-💡 **Learn the Lesson**: Every loss teaches something valuable
-🎯 **Stick to Your Plan**: Don't revenge trade or deviate from your strategy
-💪 **Stay Disciplined**: Emotional decisions often lead to more losses
-
-Your portfolio shows ${stats.totalTrades} trades with a ${stats.winRate.toFixed(1)}% win rate. Focus on improving your process, not just the outcomes.`
-        } else if (input.includes("fear") || input.includes("scared") || input.includes("afraid")) {
-          response = `Fear is natural in trading, but it shouldn't control your decisions:
-
-🎯 **Start Small**: Use smaller position sizes until confidence builds
-📊 **Use Stop Losses**: Protect yourself with proper risk management
-📚 **Education**: The more you know, the less you'll fear
-🧘 **Mindfulness**: Practice staying calm under pressure
-
-Fear often comes from uncertainty. Having a solid trading plan can help reduce that uncertainty.`
-        }
-        // Trading Strategy Responses
-        else if (input.includes("strategy") || input.includes("improve") || input.includes("better")) {
-          response = `Based on your trading data, here are some improvement suggestions:
-
-📊 **Your Stats**: ${stats.totalTrades} trades, ${stats.winRate.toFixed(1)}% win rate
-💰 **Profit Factor**: ${stats.profitFactor > 0 ? stats.profitFactor.toFixed(2) : "N/A"}
-
-🎯 **Areas to Focus On**:
-• Risk Management: Keep losses small and let winners run
-• Consistency: Stick to your proven strategies
-• Journal Review: Analyze what works and what doesn't
-• Patience: Wait for high-probability setups
-
-Your average win is ${stats.avgWin.toFixed(2)} vs average loss of ${Math.abs(stats.avgLoss).toFixed(2)}. ${stats.avgWin > Math.abs(stats.avgLoss) ? "Good risk/reward ratio!" : "Consider improving your risk/reward ratio."}`
-        } else if (input.includes("risk") || input.includes("management")) {
-          response = `Risk management is crucial for long-term success:
-
-💡 **Position Sizing**: Never risk more than 1-2% per trade
-🛡️ **Stop Losses**: Always have an exit plan before entering
-📊 **Diversification**: Don't put all eggs in one basket
-📈 **Risk/Reward**: Aim for at least 1:2 risk/reward ratio
-
-Your current max drawdown is ${stats.maxDrawdown.toFixed(2)}. ${stats.maxDrawdown < 100 ? "Good job keeping drawdown manageable!" : "Consider reducing position sizes to limit drawdown."}`
-        } else if (input.includes("entry") || input.includes("when to buy") || input.includes("when to sell")) {
-          response = `Good entry timing is key to profitable trading:
-
-🎯 **Wait for Confirmation**: Don't rush into trades
-📊 **Use Multiple Timeframes**: Check higher timeframes for trend
-🔍 **Look for Confluence**: Multiple signals pointing same direction
-⏰ **Patience**: Better to miss a trade than force a bad one
-
-Your journal shows you use conditions like trend analysis and technical indicators. Keep refining these entry criteria based on what works best for you.`
-        }
-        // General Trading Questions
-        else if (input.includes("profit") || input.includes("money") || input.includes("earning")) {
-          response = `Your current portfolio performance:
-
-💰 **Total P/L**: ${stats.totalPL >= 0 ? "+" : ""}${stats.totalPL.toFixed(2)}
-📊 **Win Rate**: ${stats.winRate.toFixed(1)}%
-🎯 **Total Trades**: ${stats.totalTrades}
-
-${stats.totalPL >= 0 ? "🎉 Great job staying profitable!" : "💪 Focus on process improvement over profits."}
-
-Remember: Consistent profitability comes from:
-• Proper risk management
-• Following your trading plan
-• Continuous learning and adaptation
-• Emotional discipline`
-        } else if (input.includes("journal") || input.includes("tracking")) {
-          response = `Your trading journal is a powerful tool for improvement:
-
-📝 **What to Track**:
-• Entry/exit reasons
-• Emotional state during trades
-• Market conditions
-• Lessons learned
-
-📊 **Your Current Data**: ${stats.totalTrades} trades logged
-🎯 **Next Steps**: Review your trades weekly to identify patterns
-
-The more detailed your journal, the faster you'll improve. Keep documenting everything!`
-        }
-        // Default supportive response
-        else {
-          response = `I'm here to help with both trading questions and emotional support! 
-
-🤖 **I can help with**:
-• Trading strategies and analysis
-• Risk management advice  
-• Emotional support during tough times
-• Portfolio performance insights
-• General trading education
-
-💬 **Try asking about**:
-• "How can I manage trading stress?"
-• "What's my trading performance?"
-• "How do I improve my win rate?"
-• "I'm feeling anxious about my trades"
-
-What specific area would you like to explore?`
-        }
-
-        setChatMessages((prev) => [...prev, { role: "assistant", content: response }])
+      if (!session) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Sign in to talk with your coach — it needs your trade history to give personalized guidance.",
+          },
+        ])
         setIsLoading(false)
-      }, 1500) // Slightly longer delay for more realistic feel
+        return
+      }
+
+      const response = await fetch("/api/coach/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ messages: nextMessages }),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null)
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: errorBody?.error || "Something went wrong reaching your coach. Please try again.",
+          },
+        ])
+        setIsLoading(false)
+        return
+      }
+
+      // Stream the response in as it arrives rather than waiting for the
+      // full text, so the coach feels responsive.
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantText = ""
+
+      setChatMessages((prev) => [...prev, { role: "assistant", content: "" }])
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          assistantText += decoder.decode(value, { stream: true })
+          setChatMessages((prev) => {
+            const updated = [...prev]
+            updated[updated.length - 1] = { role: "assistant", content: assistantText }
+            return updated
+          })
+        }
+      }
+
+      setIsLoading(false)
     } catch (error) {
-      console.error("Error getting AI response:", error)
+      console.error("Error getting AI coach response:", error)
       setChatMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content:
-            "I'm here to support you, but I'm having a technical moment. Please try again, and remember - every challenge in trading is an opportunity to grow stronger! 💪",
+          content: "I'm having a technical moment reaching the coach backend. Please try again in a moment.",
         },
       ])
       setIsLoading(false)
