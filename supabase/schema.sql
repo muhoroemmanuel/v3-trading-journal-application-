@@ -127,3 +127,55 @@ create policy "coach_messages_insert_own" on public.coach_messages
 drop policy if exists "coach_messages_delete_own" on public.coach_messages;
 create policy "coach_messages_delete_own" on public.coach_messages
   for delete using (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- broker_connections (NEW)
+-- One row per MetaApi-provisioned MT4/MT5 account a user has connected.
+-- We never store the investor password here — MetaApi holds and manages
+-- the actual terminal connection; we only keep the reference id it gives us.
+-- ─────────────────────────────────────────────────────────────────────────
+create table if not exists public.broker_connections (
+  id                uuid primary key default gen_random_uuid(),
+  user_id           uuid not null references auth.users(id) on delete cascade,
+  platform          text not null check (platform in ('mt4', 'mt5')),
+  server            text not null,
+  account_login     text not null,
+  metaapi_account_id text not null,
+  status            text not null default 'connecting'
+                       check (status in ('connecting', 'connected', 'error', 'disconnected')),
+  error_message     text,
+  last_synced_at    timestamptz,
+  created_at        timestamptz not null default now()
+);
+
+create index if not exists broker_connections_user_id_idx on public.broker_connections (user_id);
+
+alter table public.broker_connections enable row level security;
+
+drop policy if exists "broker_connections_select_own" on public.broker_connections;
+create policy "broker_connections_select_own" on public.broker_connections
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "broker_connections_insert_own" on public.broker_connections;
+create policy "broker_connections_insert_own" on public.broker_connections
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "broker_connections_update_own" on public.broker_connections;
+create policy "broker_connections_update_own" on public.broker_connections
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "broker_connections_delete_own" on public.broker_connections;
+create policy "broker_connections_delete_own" on public.broker_connections
+  for delete using (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- trades: broker sync support
+-- Lets synced trades be matched back to their MetaTrader position so
+-- re-syncing updates the existing row instead of creating a duplicate.
+-- ─────────────────────────────────────────────────────────────────────────
+alter table public.trades add column if not exists broker_connection_id uuid references public.broker_connections(id) on delete set null;
+alter table public.trades add column if not exists broker_position_id text;
+
+create unique index if not exists trades_user_broker_position_unique
+  on public.trades (user_id, broker_position_id)
+  where broker_position_id is not null;
