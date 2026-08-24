@@ -1,414 +1,256 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect, useState } from "react"
+import { AlertTriangle, ArrowDown, ArrowUp, Bell, Loader2, ShieldCheck, Trash2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/hooks/use-toast"
-import { AlertTriangle, Calendar, Globe, RefreshCw } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { supabase } from "@/lib/supabase"
 
-interface EconomicEvent {
+type Direction = "above" | "below"
+type AlertStatus = "active" | "triggered" | "cancelled"
+
+interface PriceAlert {
   id: string
-  title: string
-  country: string
-  impact: "low" | "medium" | "high"
-  date: string
-  time: string
-  notifyBefore: number // minutes before event
-  subscribed: boolean
+  currency_pair: string
+  direction: Direction
+  target_price: number
+  status: AlertStatus
+  triggered_at: string | null
+  triggered_price: number | null
+  created_at: string
 }
 
-const COUNTRIES = [
-  "United States",
-  "Eurozone",
-  "United Kingdom",
-  "Japan",
-  "Australia",
-  "Canada",
-  "Switzerland",
-  "China",
-  "New Zealand",
-  "All Countries",
-]
+const COMMON_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP"]
 
-export default function EconomicEventForm() {
-  const [events, setEvents] = useState<EconomicEvent[]>([])
-  const [title, setTitle] = useState<string>("")
-  const [country, setCountry] = useState<string>("")
-  const [impact, setImpact] = useState<"low" | "medium" | "high">("medium")
-  const [date, setDate] = useState<string>("")
-  const [time, setTime] = useState<string>("")
-  const [notifyBefore, setNotifyBefore] = useState<number>(15)
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+async function authHeader(): Promise<Record<string, string>> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  return session ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
 
-  // Load saved events and check notification settings
+export default function PriceAlertForm() {
+  const [alerts, setAlerts] = useState<PriceAlert[]>([])
+  const [signedIn, setSignedIn] = useState<boolean | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [currencyPair, setCurrencyPair] = useState("EUR/USD")
+  const [customPair, setCustomPair] = useState("")
+  const [direction, setDirection] = useState<Direction>("above")
+  const [targetPrice, setTargetPrice] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+
+  const loadAlerts = async () => {
+    const headers = await authHeader()
+    if (!headers.Authorization) {
+      setSignedIn(false)
+      setIsLoading(false)
+      return
+    }
+    setSignedIn(true)
+    try {
+      const response = await fetch("/api/price-alerts", { headers })
+      const data = response.ok ? await response.json() : []
+      setAlerts(Array.isArray(data) ? data : [])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
-    const savedEvents = JSON.parse(localStorage.getItem("economicEvents") || "[]")
-    setEvents(savedEvents)
-
-    // Check if notifications are enabled
-    const settings = JSON.parse(localStorage.getItem("notificationSettings") || "{}")
-    setNotificationsEnabled(settings.pushEnabled || settings.emailEnabled || false)
+    loadAlerts()
   }, [])
 
-  // Save events when they change
-  useEffect(() => {
-    localStorage.setItem("economicEvents", JSON.stringify(events))
-  }, [events])
+  const createAlert = async () => {
+    const pair = (customPair.trim() || currencyPair).toUpperCase()
+    const price = Number.parseFloat(targetPrice)
 
-  // Add a new economic event subscription
-  const addEvent = () => {
-    if (!title) {
-      toast({
-        title: "Error",
-        description: "Please enter an event title",
-        variant: "destructive",
-      })
+    if (!pair || Number.isNaN(price) || price <= 0) {
+      toast({ title: "Check your entry", description: "Enter a currency pair and a positive target price.", variant: "destructive" })
       return
     }
 
-    if (!country) {
-      toast({
-        title: "Error",
-        description: "Please select a country",
-        variant: "destructive",
+    setSubmitting(true)
+    const headers = await authHeader()
+    try {
+      const response = await fetch("/api/price-alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ currency_pair: pair, direction, target_price: price }),
       })
-      return
-    }
+      const data = await response.json().catch(() => null)
 
-    if (!date) {
-      toast({
-        title: "Error",
-        description: "Please select a date",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!time) {
-      toast({
-        title: "Error",
-        description: "Please select a time",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const newEvent: EconomicEvent = {
-      id: crypto.randomUUID(),
-      title,
-      country,
-      impact,
-      date,
-      time,
-      notifyBefore,
-      subscribed: true,
-    }
-
-    setEvents([...events, newEvent])
-
-    toast({
-      title: "Event Subscribed",
-      description: `You will be notified ${notifyBefore} minutes before ${title}`,
-    })
-
-    // Reset form
-    setTitle("")
-    setDate("")
-    setTime("")
-  }
-
-  // Toggle event subscription
-  const toggleSubscription = (id: string) => {
-    setEvents(events.map((event) => (event.id === id ? { ...event, subscribed: !event.subscribed } : event)))
-
-    const event = events.find((e) => e.id === id)
-    if (event) {
-      toast({
-        title: event.subscribed ? "Unsubscribed" : "Subscribed",
-        description: event.subscribed
-          ? `You will no longer receive notifications for ${event.title}`
-          : `You will be notified ${event.notifyBefore} minutes before ${event.title}`,
-      })
-    }
-  }
-
-  // Delete an event
-  const deleteEvent = (id: string) => {
-    setEvents(events.filter((event) => event.id !== id))
-
-    toast({
-      title: "Event Removed",
-      description: "Economic event has been removed from your subscriptions",
-    })
-  }
-
-  // Simulate fetching events from myfxbook.com
-  const fetchEconomicEvents = () => {
-    setIsRefreshing(true)
-
-    // Simulate API call delay
-    setTimeout(() => {
-      const sampleEvents: EconomicEvent[] = [
-        {
-          id: crypto.randomUUID(),
-          title: "Non-Farm Payrolls",
-          country: "United States",
-          impact: "high",
-          date: new Date(Date.now() + 86400000).toISOString().split("T")[0], // tomorrow
-          time: "12:30",
-          notifyBefore: 30,
-          subscribed: false,
-        },
-        {
-          id: crypto.randomUUID(),
-          title: "ECB Interest Rate Decision",
-          country: "Eurozone",
-          impact: "high",
-          date: new Date(Date.now() + 172800000).toISOString().split("T")[0], // day after tomorrow
-          time: "11:45",
-          notifyBefore: 30,
-          subscribed: false,
-        },
-        {
-          id: crypto.randomUUID(),
-          title: "Retail Sales m/m",
-          country: "United Kingdom",
-          impact: "medium",
-          date: new Date(Date.now() + 86400000).toISOString().split("T")[0], // tomorrow
-          time: "08:30",
-          notifyBefore: 15,
-          subscribed: false,
-        },
-        {
-          id: crypto.randomUUID(),
-          title: "GDP q/q",
-          country: "Japan",
-          impact: "high",
-          date: new Date(Date.now() + 259200000).toISOString().split("T")[0], // 3 days from now
-          time: "23:50",
-          notifyBefore: 30,
-          subscribed: false,
-        },
-      ]
-
-      // Merge with existing events, avoiding duplicates by title and date
-      const existingTitlesAndDates = events.map((e) => `${e.title}-${e.date}`)
-      const newEvents = sampleEvents.filter((e) => !existingTitlesAndDates.includes(`${e.title}-${e.date}`))
-
-      if (newEvents.length > 0) {
-        setEvents([...events, ...newEvents])
-        toast({
-          title: "Economic Calendar Updated",
-          description: `${newEvents.length} new events found`,
-        })
-      } else {
-        toast({
-          title: "No New Events",
-          description: "Your economic calendar is up to date",
-        })
+      if (!response.ok) {
+        toast({ title: "Couldn't create alert", description: data?.error || "Please try again.", variant: "destructive" })
+        return
       }
 
-      setIsRefreshing(false)
-    }, 2000)
+      setAlerts((current) => [data, ...current])
+      setTargetPrice("")
+      setCustomPair("")
+      toast({ title: "Alert created", description: `We'll email you when ${pair} goes ${direction} ${price}.` })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  // Get impact badge color
-  const getImpactColor = (impact: "low" | "medium" | "high") => {
-    switch (impact) {
-      case "low":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100"
-      case "medium":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100"
-      case "high":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100"
-      default:
-        return ""
-    }
+  const cancelAlert = async (alert: PriceAlert) => {
+    const headers = await authHeader()
+    await fetch(`/api/price-alerts/${alert.id}`, { method: "DELETE", headers })
+    setAlerts((current) => current.filter((item) => item.id !== alert.id))
+  }
+
+  const activeAlerts = alerts.filter((a) => a.status === "active")
+  const pastAlerts = alerts.filter((a) => a.status !== "active")
+
+  if (signedIn === false) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+          <ShieldCheck className="h-10 w-10 text-primary" />
+          <h2 className="font-semibold">Sign in to set price alerts</h2>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Alerts are checked in the background and emailed to you, so they need your account to know where to send them.
+          </p>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center">
-          <Calendar className="mr-2 h-5 w-5" />
-          Economic Events
-        </CardTitle>
-        <CardDescription>Subscribe to economic events from MyFXBook and receive notifications</CardDescription>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
-        {!notificationsEnabled && (
-          <div className="flex items-center p-3 text-sm border rounded-md bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800">
-            <AlertTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
-            <p>Notifications are disabled. Enable them in Settings to receive economic event alerts.</p>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Bell className="h-5 w-5" />
+            New price alert
+          </CardTitle>
+          <CardDescription>Checked roughly every 15 minutes. We&apos;ll email you the moment it triggers.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pair">Currency pair</Label>
+            <Select value={currencyPair} onValueChange={setCurrencyPair}>
+              <SelectTrigger id="pair" className="min-h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {COMMON_PAIRS.map((pair) => (
+                  <SelectItem key={pair} value={pair}>
+                    {pair}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              className="text-base"
+              placeholder="Or type any pair, e.g. USD/ZAR"
+              value={customPair}
+              onChange={(event) => setCustomPair(event.target.value)}
+            />
           </div>
-        )}
 
-        {/* Create new event subscription */}
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium">Subscribe to Economic Event</h3>
+          <div className="grid grid-cols-2 gap-2">
             <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-              onClick={fetchEconomicEvents}
-              disabled={isRefreshing}
+              type="button"
+              variant={direction === "above" ? "default" : "outline"}
+              className="min-h-11 gap-2"
+              onClick={() => setDirection("above")}
             >
-              {isRefreshing ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  Refreshing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh from MyFXBook
-                </>
-              )}
+              <ArrowUp className="h-4 w-4" />
+              Above
+            </Button>
+            <Button
+              type="button"
+              variant={direction === "below" ? "default" : "outline"}
+              className="min-h-11 gap-2"
+              onClick={() => setDirection("below")}
+            >
+              <ArrowDown className="h-4 w-4" />
+              Below
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="event-title">Event Title</Label>
-              <Input
-                id="event-title"
-                placeholder="e.g. Non-Farm Payrolls"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="country">Country</Label>
-              <Select value={country} onValueChange={setCountry}>
-                <SelectTrigger id="country">
-                  <SelectValue placeholder="Select country" />
-                </SelectTrigger>
-                <SelectContent>
-                  {COUNTRIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="impact">Impact Level</Label>
-              <Select value={impact} onValueChange={(value: "low" | "medium" | "high") => setImpact(value)}>
-                <SelectTrigger id="impact">
-                  <SelectValue placeholder="Select impact" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notify-before">Notify Before (minutes)</Label>
-              <Select
-                value={notifyBefore.toString()}
-                onValueChange={(value) => setNotifyBefore(Number.parseInt(value))}
-              >
-                <SelectTrigger id="notify-before">
-                  <SelectValue placeholder="Select time" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="5">5 minutes</SelectItem>
-                  <SelectItem value="15">15 minutes</SelectItem>
-                  <SelectItem value="30">30 minutes</SelectItem>
-                  <SelectItem value="60">1 hour</SelectItem>
-                  <SelectItem value="120">2 hours</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="event-date">Date</Label>
-              <Input
-                id="event-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                min={new Date().toISOString().split("T")[0]}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="event-time">Time</Label>
-              <Input id="event-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="target-price">Target price</Label>
+            <Input
+              id="target-price"
+              className="text-base"
+              type="number"
+              step="any"
+              inputMode="decimal"
+              placeholder="1.1000"
+              value={targetPrice}
+              onChange={(event) => setTargetPrice(event.target.value)}
+            />
           </div>
 
-          <Button onClick={addEvent} className="w-full mt-4">
-            Subscribe to Event
+          <Button className="min-h-11 w-full" onClick={createAlert} disabled={submitting}>
+            {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Create alert
           </Button>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Active event subscriptions */}
-        <div className="space-y-4 pt-4 border-t">
-          <h3 className="text-lg font-medium">Your Economic Event Subscriptions</h3>
-
-          {events.length === 0 ? (
-            <p className="text-center py-4 text-muted-foreground">
-              No economic events subscribed. Add one above or refresh from MyFXBook.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {events.map((event) => (
-                <div key={event.id} className="flex items-center justify-between p-3 border rounded-md bg-background">
-                  <div className="flex items-start space-x-2">
-                    <Globe className="h-4 w-4 mt-1 text-primary" />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{event.title}</p>
-                        <Badge className={`text-xs ${getImpactColor(event.impact)}`}>
-                          {event.impact.toUpperCase()}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {event.country} • {event.date} at {event.time}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Notification: {event.notifyBefore} minutes before event
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant={event.subscribed ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => toggleSubscription(event.id)}
-                    >
-                      {event.subscribed ? "Subscribed" : "Subscribe"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteEvent(event.id)}
-                      className="text-destructive"
-                    >
-                      Delete
-                    </Button>
-                  </div>
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-muted-foreground">Active alerts</h2>
+        {isLoading ? (
+          <Card>
+            <CardContent className="flex min-h-20 items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </CardContent>
+          </Card>
+        ) : activeAlerts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No active alerts yet.</p>
+        ) : (
+          activeAlerts.map((alert) => (
+            <Card key={alert.id}>
+              <CardContent className="flex items-center justify-between gap-3 p-4">
+                <div className="flex items-center gap-2">
+                  {alert.direction === "above" ? (
+                    <ArrowUp className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <ArrowDown className="h-4 w-4 text-destructive" />
+                  )}
+                  <span className="font-medium">{alert.currency_pair}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {alert.direction} {alert.target_price}
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+                <Button variant="ghost" size="icon" className="min-h-11 min-w-11" onClick={() => cancelAlert(alert)}>
+                  <Trash2 className="h-4 w-4" />
+                  <span className="sr-only">Cancel alert</span>
+                </Button>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </section>
+
+      {pastAlerts.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">Triggered</h2>
+          {pastAlerts.map((alert) => (
+            <Card key={alert.id}>
+              <CardContent className="flex items-center gap-3 p-4">
+                <Badge variant="outline" className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  Triggered
+                </Badge>
+                <span className="font-medium">{alert.currency_pair}</span>
+                <span className="text-sm text-muted-foreground">
+                  hit {alert.triggered_price} ({alert.direction} {alert.target_price}) on{" "}
+                  {alert.triggered_at ? new Date(alert.triggered_at).toLocaleString() : "unknown"}
+                </span>
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+      )}
+    </div>
   )
 }

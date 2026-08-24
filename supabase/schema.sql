@@ -179,3 +179,43 @@ alter table public.trades add column if not exists broker_position_id text;
 create unique index if not exists trades_user_broker_position_unique
   on public.trades (user_id, broker_position_id)
   where broker_position_id is not null;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- price_alerts (NEW)
+-- Real threshold-based alerts ("notify me when EUR/USD crosses 1.1000").
+-- Lives server-side (not localStorage) because a background job — not the
+-- user's browser — is what checks current prices against these on a
+-- schedule; see app/api/cron/check-price-alerts.
+-- ─────────────────────────────────────────────────────────────────────────
+create table if not exists public.price_alerts (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references auth.users(id) on delete cascade,
+  currency_pair   text not null,
+  direction       text not null check (direction in ('above', 'below')),
+  target_price    numeric not null,
+  status          text not null default 'active' check (status in ('active', 'triggered', 'cancelled')),
+  triggered_at    timestamptz,
+  triggered_price numeric,
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists price_alerts_status_idx on public.price_alerts (status);
+create index if not exists price_alerts_user_id_idx on public.price_alerts (user_id);
+
+alter table public.price_alerts enable row level security;
+
+drop policy if exists "price_alerts_select_own" on public.price_alerts;
+create policy "price_alerts_select_own" on public.price_alerts
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "price_alerts_insert_own" on public.price_alerts;
+create policy "price_alerts_insert_own" on public.price_alerts
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "price_alerts_update_own" on public.price_alerts;
+create policy "price_alerts_update_own" on public.price_alerts
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "price_alerts_delete_own" on public.price_alerts;
+create policy "price_alerts_delete_own" on public.price_alerts
+  for delete using (auth.uid() = user_id);

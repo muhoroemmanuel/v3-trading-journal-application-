@@ -11,6 +11,19 @@ export function getSupabaseForUser(accessToken: string): SupabaseClient | null {
 }
 
 /**
+ * Service-role client that bypasses RLS entirely. Only ever use this in
+ * routes with no request-bound user — e.g. a cron job that needs to read
+ * price_alerts across every user, not just one. Never expose this client
+ * or the underlying key to anything client-facing.
+ */
+export function getSupabaseAdmin(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceRoleKey) return null
+  return createClient(url, serviceRoleKey)
+}
+
+/**
  * Verifies the request's bearer token against Supabase and returns a client
  * scoped to that user (so RLS applies) plus the user object. Returns a
  * ready-to-send NextResponse instead if auth fails for any reason — callers
