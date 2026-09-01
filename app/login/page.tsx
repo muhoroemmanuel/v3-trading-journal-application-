@@ -22,8 +22,20 @@ export default function LoginPage() {
     setLoading(true)
     try {
       if (isSignUp) {
-        await signUp(email, password)
-        toast({ title: "Account created! Check your email to confirm." })
+        const result = await signUp(email, password)
+        if (result?.session) {
+          // Email confirmation is disabled on this project, so signUp
+          // already returned an active session — same as signing in.
+          toast({ title: "Account created!" })
+          router.push("/")
+        } else {
+          // Email confirmation is required — there's no session yet, so
+          // there's nothing to redirect into. Drop them into the sign-in
+          // form instead of leaving them stuck on a "create account" form
+          // with no next step.
+          toast({ title: "Account created! Check your email to confirm, then sign in." })
+          setIsSignUp(false)
+        }
       } else {
         await signIn(email, password)
         toast({ title: "Welcome back!" })
