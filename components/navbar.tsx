@@ -13,6 +13,8 @@ export function Navbar() {
     return pathname === path
   }
 
+  if (pathname === "/login") return null
+
   return (
     <header className="border-b">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
