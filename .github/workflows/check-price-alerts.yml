@@ -1,0 +1,32 @@
+name: Check price alerts
+
+# Runs on a schedule instead of Vercel's own Cron because Vercel's Hobby
+# plan caps cron jobs at once per day — far too infrequent for price
+# alerts. GitHub Actions' schedule is free and can run every few minutes.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   APP_URL     — your deployed app's URL, e.g. https://your-app.vercel.app
+#   CRON_SECRET — must match the CRON_SECRET env var set in Vercel
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub doesn't guarantee exact timing under load,
+    # and disables schedules after 60 days with no commits to the repo.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+jobs:
+  check-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call check-price-alerts endpoint
+        run: |
+          response=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${{ secrets.APP_URL }}/api/cron/check-price-alerts" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP status: $response"
+          cat /tmp/response.json
+          if [ "$response" -ge 400 ]; then
+            echo "check-price-alerts returned an error"
+            exit 1
+          fi

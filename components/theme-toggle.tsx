@@ -13,14 +13,7 @@ export function ThemeToggle() {
   // Avoid hydration mismatch by only rendering after component is mounted
   useEffect(() => {
     setMounted(true)
-
-    // Apply the current theme directly to ensure it's in sync
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark")
-    } else {
-      document.documentElement.classList.remove("dark")
-    }
-  }, [theme])
+  }, [])
 
   if (!mounted) {
     return <Button variant="ghost" size="icon" className="w-9 h-9 opacity-0" />

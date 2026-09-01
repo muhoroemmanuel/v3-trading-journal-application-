@@ -1,7 +1,13 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import dynamic from "next/dynamic"
 import TradeJournal from "@/components/trade-journal"
-import Portfolio from "@/components/portfolio"
 import { ThemeToggle } from "@/components/theme-toggle"
+
+// Portfolio pulls in recharts (a heavy charting lib) but starts hidden behind
+// the "Portfolio" tab — code-split it instead of bundling it into the initial load.
+const Portfolio = dynamic(() => import("@/components/portfolio"), {
+  loading: () => <div className="p-6 text-sm text-muted-foreground">Loading portfolio…</div>,
+})
 
 export default function Home() {
   return (

@@ -23,8 +23,11 @@ export async function subscribeToNotifications() {
 
     // If no subscription exists, create one
     if (!subscription) {
-      // You would typically get this from your server in a real app
-      // For demo purposes, we're using a placeholder
+      // ⚠️ SECURITY: This is a DEMO VAPID key from Google's examples.
+      // It will NOT work for your domain. For production:
+      // 1. Generate your own VAPID key pair: https://web-push-codelab.glitch.me/
+      // 2. Store the private key securely on your server (never in client code)
+      // 3. Replace this public key with your own
       const vapidPublicKey = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U"
 
       // Convert the key to the format expected by the browser
