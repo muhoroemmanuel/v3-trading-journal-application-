@@ -1,13 +1,29 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { LineChart, Bell, Settings, WalletCards, BookOpen } from "lucide-react"
+import { LineChart, Bell, Settings, WalletCards, BookOpen, LogOut, User } from "lucide-react"
+import { useAuth } from "@/components/auth-provider"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 export function Navbar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, loading, signOut } = useAuth()
+
+  const handleSignOut = async () => {
+    await signOut()
+    router.push("/login")
+  }
 
   const isActive = (path: string) => {
     return pathname === path
@@ -67,6 +83,33 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          {!loading && !user && (
+            <Button asChild size="sm" className="min-h-9">
+              <Link href="/login">Sign In</Link>
+            </Button>
+          )}
+
+          {!loading && user && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="min-h-9 min-w-9">
+                  <User className="h-5 w-5" />
+                  <span className="sr-only">Account menu</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel className="max-w-[220px] truncate font-normal text-muted-foreground">
+                  {user.email}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           <ThemeToggle />
 
           <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">

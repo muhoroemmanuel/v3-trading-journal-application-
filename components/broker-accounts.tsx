@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import { AlertCircle, CheckCircle2, Clock3, Loader2, MoreVertical, Plus, RefreshCw, ShieldCheck, Unplug } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -198,7 +199,7 @@ export function BrokerAccounts() {
       </Button>}
     </div>
 
-    {signedIn === false && <Card><CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center"><ShieldCheck className="h-10 w-10 text-primary" /><h2 className="font-semibold">Sign in to connect a broker</h2><p className="max-w-sm text-sm text-muted-foreground">Broker sync needs your account to securely store the connection and your imported trades.</p></CardContent></Card>}
+    {signedIn === false && <Card><CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center"><ShieldCheck className="h-10 w-10 text-primary" /><h2 className="font-semibold">Sign in to connect a broker</h2><p className="max-w-sm text-sm text-muted-foreground">Broker sync needs your account to securely store the connection and your imported trades.</p><Button asChild className="min-h-11"><Link href="/login">Sign in / Create account</Link></Button></CardContent></Card>}
 
     {signedIn && accounts.length > 0 && <section className="space-y-3">
       <h2 className="text-sm font-semibold text-muted-foreground">Connected accounts</h2>
