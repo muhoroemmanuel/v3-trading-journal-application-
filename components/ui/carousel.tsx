@@ -106,11 +106,17 @@ const Carousel = React.forwardRef<
       setApi(api)
     }, [api, setApi])
 
+    // Subscribe to the stable carousel API and keep selection in sync.
+    //
+    // onSelect is intentionally subscribed imperatively: the initial call seeds the
+    // selected index from the carousel instance without adding `onSelect`'s
+    // identity to this effect's lifecycle.
     React.useEffect(() => {
       if (!api) {
         return
       }
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- onSelect is the embla subscription callback (also registered for reInit/select below), not an ad-hoc state write in the effect body.
       onSelect(api)
       api.on('reInit', onSelect)
       api.on('select', onSelect)

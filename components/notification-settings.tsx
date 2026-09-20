@@ -35,127 +35,136 @@ const DAYS_OF_WEEK = [
   { value: "sunday", label: "Sunday" },
 ]
 
-export default function NotificationSettings() {
-  const [settings, setSettings] = useState<NotificationSettings>({
-    email: "",
-    emailEnabled: false,
-    pushEnabled: false,
-    journalReminders: true,
-    journalReminderFrequency: "daily",
-    journalReminderTime: "18:00",
-    journalReminderDays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-    journalReminderCustomInterval: 3,
+// Defaults for a first-time visit. Also used by the mount-only hydration below:
+// on that first pass the rendered state is still these values.
+const DEFAULT_SETTINGS: NotificationSettings = {
+  email: "",
+  emailEnabled: false,
+  pushEnabled: false,
+  journalReminders: true,
+  journalReminderFrequency: "daily",
+  journalReminderTime: "18:00",
+  journalReminderDays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+  journalReminderCustomInterval: 3,
+}
+
+const REMINDER_TITLE = "📝 Trading Journal Reminder"
+const REMINDER_BODY = "Don't forget to log your trades and reflect on your trading performance today!"
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function clearScheduledNotifications() {
+  localStorage.removeItem("journalReminderInterval")
+  localStorage.removeItem("journalReminderTimeouts")
+  localStorage.removeItem("economicEventTimeouts")
+}
+
+// The scheduling helpers live at module scope and take the settings they act on
+// as an argument. Declared inside the component they were re-created on every
+// render, which made them unstable effect dependencies: listing them in a
+// dependency array would re-run the mount-only hydration and re-arm timers on
+// every render — the classic source of duplicate journal reminders.
+//
+// NOTE: no server-side email provider is wired to the browser scheduler yet.
+// The only real email path today is the price-alert cron job (lib/email.ts).
+// This used to log a fake send and toast "Email Sent", which told users their
+// email setting was live when nothing had been sent.
+function sendEmailNotification(settings: NotificationSettings, subject: string, body: string, type: string) {
+  if (!settings.email || !isValidEmail(settings.email)) return
+
+  console.info(
+    `[notifications] Email delivery isn't connected on this deployment — nothing was sent to ${settings.email}.`,
+    { subject, body, type },
+  )
+}
+
+function sendJournalReminder(settings: NotificationSettings) {
+  localStorage.setItem("lastJournalReminderDate", new Date().toDateString())
+
+  if (settings.pushEnabled && Notification.permission === "granted") {
+    const notification = new Notification(REMINDER_TITLE, {
+      body: REMINDER_BODY,
+      icon: "/favicon.ico",
+      badge: "/favicon.ico",
+      tag: "journal-reminder",
+      requireInteraction: true,
+    })
+
+    notification.onclick = () => {
+      window.focus()
+      notification.close()
+    }
+  }
+
+  if (settings.emailEnabled && settings.email) {
+    sendEmailNotification(settings, REMINDER_TITLE, REMINDER_BODY, "journal-reminder")
+  }
+
+  toast({
+    title: "Journal Reminder",
+    description: "Time to update your trading journal!",
   })
+}
+
+function scheduleJournalReminders(settings: NotificationSettings) {
+  localStorage.removeItem("journalReminderTimeouts")
+  localStorage.removeItem("journalReminderInterval")
+
+  const now = new Date()
+  const [hours, minutes] = settings.journalReminderTime.split(":").map(Number)
+
+  const nextReminderTime = new Date()
+  nextReminderTime.setHours(hours, minutes, 0, 0)
+
+  if (nextReminderTime <= now) {
+    nextReminderTime.setDate(nextReminderTime.getDate() + 1)
+  }
+
+  const timeUntilReminder = nextReminderTime.getTime() - Date.now()
+
+  if (timeUntilReminder > 0) {
+    setTimeout(() => {
+      sendJournalReminder(settings)
+    }, timeUntilReminder)
+  }
+}
+
+function scheduleNotifications(settings: NotificationSettings) {
+  if (!settings.pushEnabled && !settings.emailEnabled) return
+  if (settings.journalReminders) {
+    scheduleJournalReminders(settings)
+  }
+}
+
+function initializeNotificationScheduling(settings: NotificationSettings) {
+  clearScheduledNotifications()
+  scheduleNotifications(settings)
+}
+
+export default function NotificationSettings() {
+  const [settings, setSettings] = useState<NotificationSettings>(() => ({ ...DEFAULT_SETTINGS }))
 
   const [pushSupported, setPushSupported] = useState(false)
   const [pushPermission, setPushPermission] = useState<NotificationPermission>("default")
   const [sendingEmail, setSendingEmail] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
-  // Declared above the effects that call them (initializeNotificationScheduling /
-  // sendJournalReminder / scheduleNotifications) so they're available without
-  // relying on closures over not-yet-initialized const bindings.
-  const clearScheduledNotifications = () => {
-    localStorage.removeItem("journalReminderInterval")
-    localStorage.removeItem("journalReminderTimeouts")
-    localStorage.removeItem("economicEventTimeouts")
-  }
-
-  const sendEmailNotification = async (subject: string, body: string, type: string) => {
-    if (!settings.email || !isValidEmail(settings.email)) return
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      console.log(`Email sent to ${settings.email}:`, { subject, body, type })
-
-      if (type === "economic-event" || type === "journal-reminder") {
-        toast({
-          title: "Email Sent",
-          description: `Notification email sent to ${settings.email}`,
-        })
-      }
-    } catch (error) {
-      console.error("Error sending email:", error)
-    }
-  }
-
-  const isValidEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  }
-
-  const sendJournalReminder = () => {
-    localStorage.setItem("lastJournalReminderDate", new Date().toDateString())
-
-    const title = "📝 Trading Journal Reminder"
-    const body = "Don't forget to log your trades and reflect on your trading performance today!"
-
-    if (settings.pushEnabled && Notification.permission === "granted") {
-      const notification = new Notification(title, {
-        body,
-        icon: "/favicon.ico",
-        badge: "/favicon.ico",
-        tag: "journal-reminder",
-        requireInteraction: true,
-      })
-
-      notification.onclick = () => {
-        window.focus()
-        notification.close()
-      }
-    }
-
-    if (settings.emailEnabled && settings.email) {
-      sendEmailNotification(title, body, "journal-reminder")
-    }
-
-    toast({
-      title: "Journal Reminder",
-      description: "Time to update your trading journal!",
-    })
-  }
-
-  const scheduleJournalReminders = () => {
-    localStorage.removeItem("journalReminderTimeouts")
-    localStorage.removeItem("journalReminderInterval")
-
-    const now = new Date()
-    const [hours, minutes] = settings.journalReminderTime.split(":").map(Number)
-
-    const nextReminderTime = new Date()
-    nextReminderTime.setHours(hours, minutes, 0, 0)
-
-    if (nextReminderTime <= now) {
-      nextReminderTime.setDate(nextReminderTime.getDate() + 1)
-    }
-
-    const timeUntilReminder = nextReminderTime.getTime() - Date.now()
-
-    if (timeUntilReminder > 0) {
-      setTimeout(() => {
-        sendJournalReminder()
-      }, timeUntilReminder)
-    }
-  }
-
-  const scheduleNotifications = () => {
-    if (!settings.pushEnabled && !settings.emailEnabled) return
-    if (settings.journalReminders) {
-      scheduleJournalReminders()
-    }
-  }
-
-  const initializeNotificationScheduling = () => {
-    clearScheduledNotifications()
-    scheduleNotifications()
-  }
-
-  // Load saved settings + check for missed reminders on page load
+  // Load saved settings + check for missed reminders on page load. This must stay
+  // a mount-only effect: it hydrates browser-only state (localStorage and the
+  // Notification API do not exist during SSR) and the scheduling helpers it calls
+  // are module-scope functions that take the settings they act on as an argument,
+  // so there is no render-scope closure to list as a dependency. (The helpers
+  // used to be in-component, which meant adding them to a dependency array would
+  // have re-armed every timer on each render — duplicate journal reminders.)
   useEffect(() => {
     const savedSettings = localStorage.getItem("notificationSettings")
-    let parsed: any = null
+    let parsed: Partial<NotificationSettings> | null = null
     if (savedSettings) {
-    try {
-        parsed = JSON.parse(savedSettings)
+      try {
+        parsed = JSON.parse(savedSettings) as Partial<NotificationSettings>
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only hydration: localStorage does not exist during SSR, so this cannot move into the useState initializer.
         setSettings((prev) => ({ ...prev, ...parsed }))
       } catch (error) {
         console.error("Error parsing saved settings:", error)
@@ -167,9 +176,13 @@ export default function NotificationSettings() {
       setPushPermission(Notification.permission)
     }
 
-    initializeNotificationScheduling()
+    // State is still DEFAULT_SETTINGS on this first pass, which is exactly what
+    // the previous closure-based call scheduled from. The effect below
+    // re-schedules as soon as the hydrated settings land in state.
+    initializeNotificationScheduling(DEFAULT_SETTINGS)
 
-    // FIX: Check for missed reminders on page load (timeout IDs don't survive reloads)
+    // Missed reminders: timeout IDs don't survive a reload, so if today's
+    // reminder time has already passed, send it now.
     const lastReminder = localStorage.getItem("lastJournalReminderDate")
     const today = new Date().toDateString()
     if (lastReminder !== today && parsed?.journalReminders) {
@@ -177,16 +190,18 @@ export default function NotificationSettings() {
       const reminderTime = new Date()
       reminderTime.setHours(hours, minutes, 0, 0)
       if (Date.now() > reminderTime.getTime()) {
-        sendJournalReminder()
+        sendJournalReminder(DEFAULT_SETTINGS)
         localStorage.setItem("lastJournalReminderDate", today)
       }
     }
   }, [])
 
-  // Save settings when they change
+  // Save settings when they change, then re-arm the reminders for the new
+  // settings. `settings` is the only dependency that matters here: the helper is
+  // module-scope, so there is no unstable function identity to chase.
   useEffect(() => {
     localStorage.setItem("notificationSettings", JSON.stringify(settings))
-    scheduleNotifications()
+    scheduleNotifications(settings)
   }, [settings])
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -212,6 +227,7 @@ export default function NotificationSettings() {
       })
 
       sendEmailNotification(
+        settings,
         "Welcome to Trading Journal Notifications",
         "You have successfully enabled email notifications for your trading journal. You'll receive economic event alerts and journal reminders based on your preferences.",
         "welcome",
@@ -244,7 +260,7 @@ export default function NotificationSettings() {
           description: "You will now receive push notifications",
         })
 
-        scheduleNotifications()
+        scheduleNotifications(settings)
       } catch (error) {
         console.error("Error subscribing to push notifications:", error)
         toast({
@@ -274,12 +290,12 @@ export default function NotificationSettings() {
 
   const saveSettings = async () => {
     setSavingSettings(true)
-    let parsed: any = null
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Settings live in localStorage; the fake delay that used to be here just
+      // made saving feel slow without doing anything.
       localStorage.setItem("notificationSettings", JSON.stringify(settings))
       clearScheduledNotifications()
-      scheduleNotifications()
+      scheduleNotifications(settings)
 
       toast({
         title: "Settings Saved",
@@ -305,7 +321,7 @@ export default function NotificationSettings() {
       })
       return
     }
-    sendJournalReminder()
+    sendJournalReminder(settings)
   }
 
   return (
@@ -343,7 +359,10 @@ export default function NotificationSettings() {
               value={settings.email}
               onChange={handleEmailChange}
             />
-            <p className="text-sm text-muted-foreground">We&apos;ll send notifications to this email address</p>
+            <p className="text-sm text-muted-foreground">
+              Saved with your other preferences. Email delivery isn&apos;t connected on this deployment yet — only
+              price alerts are emailed (see the Alerts page).
+            </p>
           </div>
 
           <div className="flex items-center justify-between">

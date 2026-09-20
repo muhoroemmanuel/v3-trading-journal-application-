@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # `npm install` rather than `npm ci`: a few dependencies (ai, @ai-sdk/openai,
+      # next-themes) are declared as "latest", so the lockfile can drift from
+      # package.json and make `npm ci` fail for reasons unrelated to the change.
+      # Switch to `npm ci` once those are pinned to real versions.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      # No secrets required: every integration degrades gracefully when its key is
+      # missing, so a green build here means the code compiles, not that the
+      # deployment is fully configured.
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

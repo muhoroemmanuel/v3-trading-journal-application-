@@ -61,6 +61,61 @@ interface AIAnalysis {
   tradingStrategies?: string
 }
 
+// Hardcoded placeholder events. There is no live Forex Factory (or other)
+// calendar feed wired up yet — see the "Sample data" notice in the render below
+// before treating any of this as real market information.
+//
+// Deliberately at module scope rather than inside the component: the mount-only
+// load below closes over it. A fresh array literal per render would either
+// refetch in a loop or need a dependency-array suppression to stay quiet.
+const SAMPLE_EVENTS: EconomicEvent[] = [
+  {
+    id: "1",
+    time: "08:30",
+    currency: "USD",
+    impact: "high",
+    event: "Non-Farm Payrolls",
+    forecast: "200K",
+    previous: "187K",
+  },
+  {
+    id: "2",
+    time: "10:00",
+    currency: "EUR",
+    impact: "medium",
+    event: "German Factory Orders",
+    forecast: "0.5%",
+    previous: "-0.2%",
+  },
+  {
+    id: "3",
+    time: "12:30",
+    currency: "GBP",
+    impact: "high",
+    event: "BOE Interest Rate Decision",
+    forecast: "5.25%",
+    previous: "5.25%",
+  },
+  {
+    id: "4",
+    time: "14:00",
+    currency: "USD",
+    impact: "low",
+    event: "Consumer Credit",
+    forecast: "15.0B",
+    previous: "12.1B",
+  },
+  {
+    id: "5",
+    time: "15:30",
+    currency: "CAD",
+    impact: "medium",
+    event: "Employment Change",
+    forecast: "25.0K",
+    previous: "21.8K",
+  },
+]
+
 export default function ForexFactoryEvents() {
   const [events, setEvents] = useState<EconomicEvent[]>([])
   // filteredEvents is derived from events/filters below via useMemo — no state needed
@@ -84,56 +139,8 @@ export default function ForexFactoryEvents() {
   const [contextResponse, setContextResponse] = useState("")
   const [usingFallback, setUsingFallback] = useState(false)
 
-  // Mock data - replace with real Forex Factory API
-  const mockEvents: EconomicEvent[] = [
-    {
-      id: "1",
-      time: "08:30",
-      currency: "USD",
-      impact: "high",
-      event: "Non-Farm Payrolls",
-      forecast: "200K",
-      previous: "187K",
-    },
-    {
-      id: "2",
-      time: "10:00",
-      currency: "EUR",
-      impact: "medium",
-      event: "German Factory Orders",
-      forecast: "0.5%",
-      previous: "-0.2%",
-    },
-    {
-      id: "3",
-      time: "12:30",
-      currency: "GBP",
-      impact: "high",
-      event: "BOE Interest Rate Decision",
-      forecast: "5.25%",
-      previous: "5.25%",
-    },
-    {
-      id: "4",
-      time: "14:00",
-      currency: "USD",
-      impact: "low",
-      event: "Consumer Credit",
-      forecast: "15.0B",
-      previous: "12.1B",
-    },
-    {
-      id: "5",
-      time: "15:30",
-      currency: "CAD",
-      impact: "medium",
-      event: "Employment Change",
-      forecast: "25.0K",
-      previous: "21.8K",
-    },
-  ]
-
-  // Load events
+  // Mount-only sample-data load. There is no calendar feed to poll, so this just
+  // re-reads SAMPLE_EVENTS after a short simulated delay.
   useEffect(() => {
     const loadEvents = async () => {
       try {
@@ -143,7 +150,7 @@ export default function ForexFactoryEvents() {
         // Simulate API call
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
-        setEvents(mockEvents)
+        setEvents(SAMPLE_EVENTS)
         setLastUpdated(new Date())
       } catch (err) {
         setError("Failed to load economic events. Please try again.")
@@ -367,7 +374,7 @@ For specific analysis, the AI service is currently unavailable, but you can moni
     try {
       // Simulate API call with delay
       await new Promise((resolve) => setTimeout(resolve, 1000))
-      setEvents(mockEvents)
+      setEvents(SAMPLE_EVENTS)
       setLastUpdated(new Date())
 
       toast({
@@ -452,7 +459,7 @@ For specific analysis, the AI service is currently unavailable, but you can moni
                 Economic Calendar with AI Analysis
               </CardTitle>
               <CardDescription>
-                Real-time economic events with AI-powered insights and sentiment analysis
+                Sample events with AI-powered insights and sentiment analysis
                 {lastUpdated && (
                   <span className="block text-xs text-muted-foreground mt-1">
                     Last updated: {lastUpdated.toLocaleTimeString()}
@@ -477,6 +484,18 @@ For specific analysis, the AI service is currently unavailable, but you can moni
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* The list below is hardcoded sample data (see `SAMPLE_EVENTS`) — no live
+              calendar feed is connected, and "Refresh" just re-loads the same
+              rows. Saying so plainly beats presenting them as real-time events. */}
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Sample data:</strong> these events are placeholder examples, not a live economic calendar. No
+              external calendar feed is connected on this deployment yet — treat the times, forecasts, and the AI
+              analysis below as a demo of the interface.
+            </AlertDescription>
+          </Alert>
+
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />

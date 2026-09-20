@@ -46,10 +46,17 @@ function formatLastSynced(iso?: string | null) {
 }
 
 async function authHeader(): Promise<Record<string, string>> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  return session ? { Authorization: `Bearer ${session.access_token}` } : {}
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session ? { Authorization: `Bearer ${session.access_token}` } : {}
+  } catch (error) {
+    // Supabase not configured, or offline. Treat as "not signed in" rather than
+    // letting the rejection escape as an unhandled promise.
+    console.error("Could not read Supabase session:", error)
+    return {}
+  }
 }
 
 export function BrokerAccounts() {
@@ -82,8 +89,16 @@ export function BrokerAccounts() {
     }
   }
 
+  // Intentional mount-only fetch of the connected accounts.
   useEffect(() => {
-    loadAccounts()
+    // The plugin follows this promise chain into loadAccounts() and attributes
+    // its setState calls to the effect body; they actually land after an await,
+    // so nothing renders synchronously from here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- see above.
+    loadAccounts().catch((error) => {
+      console.error("Could not load broker accounts:", error)
+      setIsLoading(false)
+    })
   }, [])
 
   // Broker terminals take a little while to actually deploy/connect after

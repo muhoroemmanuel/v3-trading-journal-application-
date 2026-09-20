@@ -16,6 +16,11 @@ export function TradeImageGallery({ images }: Props) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {images.images.map((img: typeof images.images[0], index: number) => (
           <div key={img.id} className="relative group">
+            {/* Trade screenshots are blob: previews created from the picked File
+                (see use-image-uploads), which next/image can neither fetch nor
+                optimize — the element is a fixed-height thumbnail of whatever the
+                user just selected. */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
             <img
               src={img.preview}
               alt={img.caption || `Trade image ${index + 1}`}

@@ -102,6 +102,79 @@ interface ChartDataPoint {
   tradeNumber: number
 }
 
+/**
+ * Trades reach localStorage in two shapes: snake_case (written by lib/sync.ts
+ * saveTrade and by pullFromCloud, straight from the DB) and camelCase (this
+ * component's own import/export format). Normalizing on read is what stops
+ * Journal-created and broker-synced trades from rendering as blank rows here.
+ */
+function normalizeTrade(raw: any): Trade {
+  return {
+    id: raw?.id,
+    currencyPair: raw?.currencyPair ?? raw?.currency_pair ?? "",
+    action: raw?.action === "sell" ? "sell" : "buy",
+    date: raw?.date ?? raw?.created_at ?? "",
+    conditions: Array.isArray(raw?.conditions) ? raw.conditions : [],
+    entryPrice: raw?.entryPrice ?? raw?.entry_price ?? 0,
+    stopLossPrice: raw?.stopLossPrice ?? raw?.stop_loss_price ?? 0,
+    takeProfitPrice: raw?.takeProfitPrice ?? raw?.take_profit_price ?? 0,
+    exitPrice: raw?.exitPrice ?? raw?.exit_price ?? undefined,
+    positionSize: raw?.positionSize ?? raw?.position_size ?? 0,
+    status: raw?.status === "closed" ? "closed" : "open",
+    profitLoss: raw?.profitLoss ?? raw?.profit_loss ?? undefined,
+    notes: raw?.notes ?? "",
+    source: raw?.source,
+    sourceName: raw?.sourceName,
+  }
+}
+
+/**
+ * Best-effort cloud writes. Portfolio edits used to exist only in this browser's
+ * localStorage, so a trade closed here still looked open to the API routes — and
+ * therefore to the AI coach, which reads trade history from Supabase. Ids match
+ * the Supabase row ids because lib/sync.ts saveTrade() sends the client-generated
+ * uuid on insert.
+ */
+async function updateTradeInCloud(tradeId: string, values: Record<string, unknown>) {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) return
+    const { error } = await supabase.from("trades").update(values).eq("id", tradeId).eq("user_id", session.user.id)
+    if (error) console.error("Could not update the trade in Supabase:", error)
+  } catch (error) {
+    console.error("Could not reach Supabase to update the trade:", error)
+  }
+}
+
+async function deleteTradeInCloud(tradeId: string) {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) return
+    const { error } = await supabase.from("trades").delete().eq("id", tradeId).eq("user_id", session.user.id)
+    if (error) console.error("Could not delete the trade in Supabase:", error)
+  } catch (error) {
+    console.error("Could not reach Supabase to delete the trade:", error)
+  }
+}
+
+// Currency configuration. Kept at module scope so the list has a stable
+// identity: the mount-only hydration below reads it without having to list it as
+// a dependency, and it is not re-allocated on every render.
+const SUPPORTED_CURRENCIES = [
+  { code: "USD", symbol: "$", name: "US Dollar", icon: DollarSign },
+  { code: "EUR", symbol: "€", name: "Euro", icon: Euro },
+  { code: "GBP", symbol: "£", name: "British Pound", icon: PoundSterling },
+  { code: "JPY", symbol: "¥", name: "Japanese Yen", icon: Yen },
+  { code: "CAD", symbol: "C$", name: "Canadian Dollar", icon: DollarSign },
+  { code: "AUD", symbol: "A$", name: "Australian Dollar", icon: DollarSign },
+  { code: "CHF", symbol: "CHF", name: "Swiss Franc", icon: DollarSign },
+  { code: "CNY", symbol: "¥", name: "Chinese Yuan", icon: Yen },
+]
+
 export default function Portfolio() {
   const [trades, setTrades] = useState<Trade[]>([])
   const [filter, setFilter] = useState<string>("all")
@@ -133,25 +206,24 @@ export default function Portfolio() {
   }>({})
   const [isSubmittingCapital, setIsSubmittingCapital] = useState<boolean>(false)
 
-  // Currency configuration
-  const SUPPORTED_CURRENCIES = [
-    { code: "USD", symbol: "$", name: "US Dollar", icon: DollarSign },
-    { code: "EUR", symbol: "€", name: "Euro", icon: Euro },
-    { code: "GBP", symbol: "£", name: "British Pound", icon: PoundSterling },
-    { code: "JPY", symbol: "¥", name: "Japanese Yen", icon: Yen },
-    { code: "CAD", symbol: "C$", name: "Canadian Dollar", icon: DollarSign },
-    { code: "AUD", symbol: "A$", name: "Australian Dollar", icon: DollarSign },
-    { code: "CHF", symbol: "CHF", name: "Swiss Franc", icon: DollarSign },
-    { code: "CNY", symbol: "¥", name: "Chinese Yuan", icon: Yen },
-  ]
-
-  // Load trades from localStorage
+  // Mount-only browser hydration for trades: localStorage does not exist during
+  // SSR, so this cannot move into the useState initializer. Records arrive in one
+  // of two shapes and are normalized on read rather than rendered blank.
   useEffect(() => {
-    const storedTrades = JSON.parse(localStorage.getItem("trades") || "[]")
-    setTrades(storedTrades)
+    try {
+      const storedTrades = JSON.parse(localStorage.getItem("trades") || "[]")
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only hydration, see above.
+      setTrades(Array.isArray(storedTrades) ? storedTrades.map(normalizeTrade) : [])
+    } catch (error) {
+      console.error("Could not read trades from localStorage:", error)
+      setTrades([])
+    }
   }, [])
 
-  // Load initial capital from localStorage
+  // Load initial capital from localStorage.
+  //
+  // Mount-only browser hydration: localStorage does not exist during SSR, so
+  // this cannot move into the useState initializer.
   useEffect(() => {
     try {
       const savedCapital = localStorage.getItem("initialCapital")
@@ -160,6 +232,7 @@ export default function Portfolio() {
       if (savedCapital) {
         const capital = Number.parseFloat(savedCapital)
         if (!isNaN(capital) && capital > 0) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only hydration, see above.
           setInitialCapital(capital)
           setCapitalInput(capital.toString())
         }
@@ -543,11 +616,13 @@ export default function Portfolio() {
     }
   }
 
-  // Delete a trade
+  // Delete a trade locally, and in the cloud too so other devices (and the AI
+  // coach, which reads trade history from Supabase) stop seeing it.
   const deleteTrade = (id: string) => {
     const updatedTrades = trades.filter((trade) => trade.id !== id)
     setTrades(updatedTrades)
     localStorage.setItem("trades", JSON.stringify(updatedTrades))
+    void deleteTradeInCloud(id)
     toast({
       title: "Success",
       description: "Trade deleted successfully",
@@ -708,7 +783,7 @@ export default function Portfolio() {
 
       // Merge with existing trades, avoiding duplicates
       const existingIds = new Set(trades.map((t) => t.id))
-      const newTrades = importedTrades.filter((t) => !existingIds.has(t.id))
+      const newTrades = importedTrades.filter((t) => !existingIds.has(t.id)).map(normalizeTrade)
       const updatedTrades = [...trades, ...newTrades]
 
       // Update state and localStorage
@@ -865,6 +940,7 @@ export default function Portfolio() {
     const updatedTrades = trades.map((trade) => (trade.id === tradeId ? { ...trade, profitLoss: newPL } : trade))
     setTrades(updatedTrades)
     localStorage.setItem("trades", JSON.stringify(updatedTrades))
+    void updateTradeInCloud(tradeId, { profit_loss: newPL })
 
     toast({
       title: "Success",

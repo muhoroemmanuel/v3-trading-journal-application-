@@ -1,4 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { requireUser } from "@/lib/supabase-server"
+
+// Caps on what a single request may send. Without these, an unbounded transcript
+// is both a cost risk and a way to blow past the model's context window.
+const MAX_MESSAGES = 40
+const MAX_CHARS_PER_MESSAGE = 4000
 
 // Fallback chat responses when OpenAI is unavailable
 function generateFallbackResponse(message: string, context?: any): string {
@@ -48,8 +54,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid messages format" }, { status: 400 })
     }
 
+    // Only user/assistant turns are accepted: forwarding a client-supplied
+    // "system" role would let a caller overwrite the system prompt below.
+    const trimmed = messages
+      .filter((msg: any) => msg?.role === "user" || msg?.role === "assistant")
+      .slice(-MAX_MESSAGES)
+
+    if (trimmed.length === 0) {
+      return NextResponse.json({ error: "No user messages to respond to." }, { status: 400 })
+    }
+
+    if (trimmed.some((msg: any) => typeof msg.content !== "string" || msg.content.length > MAX_CHARS_PER_MESSAGE)) {
+      return NextResponse.json(
+        { error: `Each message must be under ${MAX_CHARS_PER_MESSAGE} characters.` },
+        { status: 413 },
+      )
+    }
+
     const apiKey = process.env.OPENAI_API_KEY
-    const lastMessage = messages[messages.length - 1]?.content || ""
+    const lastMessage = trimmed[trimmed.length - 1]?.content || ""
+
+    // The built-in fallbacks cost nothing, so anonymous visitors can still get
+    // them. Anything that would actually call OpenAI requires a signed-in user —
+    // otherwise anyone who finds this URL can spend the owner's credits.
+    if (apiKey) {
+      const auth = await requireUser(request)
+      if ("error" in auth) return auth.error
+    }
 
     // Check if OpenAI API key is available
     if (!apiKey) {
@@ -84,7 +115,7 @@ Provide clear, actionable insights while always emphasizing proper risk manageme
       const result = await streamText({
         model: openai("gpt-4o"),
         system: systemPrompt,
-        messages: messages.map((msg: any) => ({
+        messages: trimmed.map((msg: any) => ({
           role: msg.role,
           content: msg.content,
         })),

@@ -36,11 +36,14 @@ export function useImageUploads(): UseImageUploadsReturn {
   const createdUrlsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
+    // Snapshot the ref: cleanup runs later, and createdUrlsRef.current may have
+    // changed (or been reset) by then.
+    const createdUrls = createdUrlsRef.current
     return () => {
-      createdUrlsRef.current.forEach((url) => {
+      createdUrls.forEach((url) => {
         URL.revokeObjectURL(url)
       })
-      createdUrlsRef.current.clear()
+      createdUrls.clear()
     }
   }, [])
 

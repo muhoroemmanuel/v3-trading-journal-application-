@@ -28,10 +28,17 @@ interface PriceAlert {
 const COMMON_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP"]
 
 async function authHeader(): Promise<Record<string, string>> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  return session ? { Authorization: `Bearer ${session.access_token}` } : {}
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session ? { Authorization: `Bearer ${session.access_token}` } : {}
+  } catch (error) {
+    // Supabase not configured, or offline. Treat as "not signed in" rather than
+    // letting the rejection escape as an unhandled promise.
+    console.error("Could not read Supabase session:", error)
+    return {}
+  }
 }
 
 export default function PriceAlertForm() {
@@ -61,8 +68,16 @@ export default function PriceAlertForm() {
     }
   }
 
+  // Intentional mount-only fetch of the saved alerts.
   useEffect(() => {
-    loadAlerts()
+    // The plugin follows this promise chain into loadAlerts() and attributes its
+    // setState calls to the effect body; they actually land after an await, so
+    // nothing renders synchronously from here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- see above.
+    loadAlerts().catch((error) => {
+      console.error("Could not load price alerts:", error)
+      setIsLoading(false)
+    })
   }, [])
 
   const createAlert = async () => {

@@ -10,8 +10,12 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
-  // Avoid hydration mismatch by only rendering after component is mounted
+  // Avoid hydration mismatch by only rendering after component is mounted.
   useEffect(() => {
+    // Mount-only hydration flag: it flips once and is never toggled again, so
+    // there is no cascading render to prevent. The alternative — reading the
+    // resolved theme during the first render — flashes the wrong theme.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- see above.
     setMounted(true)
   }, [])
 

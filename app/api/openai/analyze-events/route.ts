@@ -1,4 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { requireUser } from "@/lib/supabase-server"
+
+// Analysing an unbounded list would be a cost risk and can overflow the prompt.
+const MAX_EVENTS = 40
 
 // Fallback AI analysis when OpenAI API is unavailable
 function generateFallbackAnalysis(events: any[], analysisType: string) {
@@ -50,14 +54,29 @@ function generateFallbackAnalysis(events: any[], analysisType: string) {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const { events, analysisType } = await request.json()
+  // Parsed once, up front: a request body stream can only be read a single time,
+  // which is why the fallback in the catch block below never actually worked.
+  const body = await request.json().catch(() => null)
 
-    if (!events || !Array.isArray(events)) {
+  try {
+    // Explicit array typing: without it `events` stays `any` and the `.map((event)
+    // => ...)` callbacks below fail with TS7006 (implicit any) under strict mode.
+    const events: any[] | null = Array.isArray(body?.events) ? body.events.slice(0, MAX_EVENTS) : null
+    const analysisType = body?.analysisType
+
+    if (!events || events.length === 0) {
       return NextResponse.json({ error: "Invalid events data provided" }, { status: 400 })
     }
 
     const apiKey = process.env.OPENAI_API_KEY
+
+    // The built-in analysis below costs nothing, so anonymous visitors can still
+    // get it. Anything that would actually call OpenAI requires a signed-in user —
+    // otherwise anyone who finds this URL can spend the owner's credits.
+    if (apiKey) {
+      const auth = await requireUser(request)
+      if ("error" in auth) return auth.error
+    }
 
     // Check if OpenAI API key is available
     if (!apiKey) {
@@ -211,23 +230,21 @@ Format as JSON array with objects containing: eventName, description, importance
   } catch (error) {
     console.error("General API Error:", error)
 
-    // Final fallback for any unexpected errors
-    try {
-      const { events: eventsData, analysisType } = await request.json()
-      const fallbackAnalysis = generateFallbackAnalysis(eventsData, analysisType)
-
+    // Final fallback for any unexpected errors — reuses the already-parsed body
+    // (re-reading request.json() here would always throw).
+    if (Array.isArray(body?.events) && body.events.length > 0) {
       return NextResponse.json({
-        analysis: fallbackAnalysis,
+        analysis: generateFallbackAnalysis(body.events.slice(0, MAX_EVENTS), body.analysisType),
         fallback: true,
         message: "Service temporarily unavailable. Using built-in analysis.",
       })
-    } catch (fallbackError) {
-      return NextResponse.json(
-        {
-          error: "Analysis service temporarily unavailable. Please try again later.",
-        },
-        { status: 500 },
-      )
     }
+
+    return NextResponse.json(
+      {
+        error: "Analysis service temporarily unavailable. Please try again later.",
+      },
+      { status: 500 },
+    )
   }
 }

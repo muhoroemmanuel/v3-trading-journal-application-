@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,7 +9,7 @@ import { BookOpen, BarChart3, RefreshCw } from "lucide-react"
 import { useTradeForm, type Trade as FormTrade } from "./hooks/useTradeForm"
 import { useTradePresets } from "./hooks/useTradePresets"
 import { useImageUploads } from "@/hooks/use-image-uploads"
-import { getLocalTrades, saveTrade, setLocalTrades, syncPending, setupSyncListener } from "@/lib/sync"
+import { getLocalTrades, saveTrade, setLocalTrades, syncPending, setupSyncListener, queueTradesForCloud } from "@/lib/sync"
 import { useAuth } from "@/components/auth-provider"
 import { TradeForm } from "./TradeForm"
 import { TradeConditions } from "./TradeConditions"
@@ -36,7 +36,9 @@ function toDbTrade(trade: FormTrade) {
     exit_price: trade.exitPrice || null,
     position_size: trade.positionSize,
     status: trade.status,
-    profit_loss: trade.profitLoss || null,
+    // ?? (not ||) — a breakeven trade has a legitimate P/L of 0, and storing it
+    // as null would drop it out of the coach's win-rate/streak analysis.
+    profit_loss: trade.profitLoss ?? null,
     notes: trade.notes || null,
     conditions: trade.conditions,
     images: trade.images?.map((img) => ({
@@ -55,11 +57,44 @@ export default function TradeJournal() {
   const [syncing, setSyncing] = useState(false)
   const { user } = useAuth()
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount.
+  //
+  // Mount-only browser hydration: localStorage does not exist during SSR, so
+  // this cannot move into the useState initializer.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only hydration, see above.
     setTrades(getLocalTrades() as unknown as FormTrade[])
-    setupSyncListener()
+    // setupSyncListener returns its own teardown — without returning it here the
+    // "online" listener stacked up on every remount.
+    return setupSyncListener()
   }, [])
+
+  // Sync once when a user signs in: drains anything queued while signed out,
+  // uploads local-only trades, then pulls the cloud copy. This is what makes
+  // broker-imported trades show up without pressing "Sync" by hand.
+  const syncedUserIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!user) {
+      syncedUserIdRef.current = null
+      return
+    }
+    if (syncedUserIdRef.current === user.id) return
+    syncedUserIdRef.current = user.id
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await syncPending()
+        if (!cancelled) setTrades(getLocalTrades() as unknown as FormTrade[])
+      } catch (error) {
+        console.error("Initial sync failed:", error)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   const form = useTradeForm()
   const presets = useTradePresets()
@@ -89,6 +124,9 @@ export default function TradeJournal() {
     const updated = [...imported, ...trades]
     setTrades(updated)
     setLocalTrades(updated as any)
+    // Imported trades never pass through saveTrade, so queue them for upload —
+    // otherwise the next cloud pull would replace them with the cloud copy.
+    queueTradesForCloud(imported)
     toast({ title: "Imported", description: `${imported.length} trades loaded` })
   }, [trades])
 

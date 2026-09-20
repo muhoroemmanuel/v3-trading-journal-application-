@@ -13,6 +13,11 @@ Ground every response in the trader's actual behavior data below, not generic ad
 
 Keep responses concise and actionable. Never suggest specific entries/exits or predict price direction — that's outside your role. Your focus is discipline, position sizing, and emotional regulation.`
 
+// Caps on what a single request may send — an unbounded transcript is both a
+// cost risk and a way to blow past the model's context window.
+const MAX_MESSAGES = 40
+const MAX_CHARS_PER_MESSAGE = 4000
+
 function getSupabaseForUser(accessToken: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -28,6 +33,24 @@ export async function POST(request: NextRequest) {
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "Invalid messages format" }, { status: 400 })
+    }
+
+    // Bound what goes to OpenAI and into coach_messages, and let only
+    // user/assistant turns through — a client-supplied "system" role could
+    // otherwise overwrite the coach prompt.
+    const trimmed = messages
+      .filter((msg: any) => msg?.role === "user" || msg?.role === "assistant")
+      .slice(-MAX_MESSAGES)
+
+    if (trimmed.length === 0) {
+      return NextResponse.json({ error: "No user messages to respond to." }, { status: 400 })
+    }
+
+    if (trimmed.some((msg: any) => typeof msg.content !== "string" || msg.content.length > MAX_CHARS_PER_MESSAGE)) {
+      return NextResponse.json(
+        { error: `Each message must be under ${MAX_CHARS_PER_MESSAGE} characters.` },
+        { status: 413 },
+      )
     }
 
     const authHeader = request.headers.get("authorization")
@@ -87,7 +110,7 @@ export async function POST(request: NextRequest) {
     // Persist the user's message right away; the assistant's reply is saved
     // in onFinish once streaming completes, so a device switch mid-stream
     // still keeps the user's half of the conversation.
-    const lastUserMessage = messages[messages.length - 1]
+    const lastUserMessage = trimmed[trimmed.length - 1]
     if (lastUserMessage?.role === "user") {
       await supabase.from("coach_messages").insert({
         user_id: user.id,
@@ -102,7 +125,7 @@ export async function POST(request: NextRequest) {
     const result = await streamText({
       model: openai("gpt-4o"),
       system: systemPrompt,
-      messages: messages.map((msg: any) => ({ role: msg.role, content: msg.content })),
+      messages: trimmed.map((msg: any) => ({ role: msg.role, content: msg.content })),
       onFinish: async ({ text }) => {
         await supabase.from("coach_messages").insert({
           user_id: user.id,

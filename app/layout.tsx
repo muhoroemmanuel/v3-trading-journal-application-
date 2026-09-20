@@ -5,6 +5,7 @@ import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Navbar } from "@/components/navbar"
 import { AuthProvider } from "@/components/auth-provider"
+import { Toaster } from "@/components/ui/toaster"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -25,7 +26,10 @@ export default function RootLayout({
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             <Navbar />
-            {children}
+            {/* pb-24 clears the fixed mobile bottom nav rendered by <Navbar />. */}
+            <div className="pb-24 md:pb-0">{children}</div>
+            {/* Mounted once here so every toast() call in the app actually renders. */}
+            <Toaster />
           </ThemeProvider>
         </AuthProvider>
       </body>

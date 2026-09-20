@@ -24,10 +24,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+    // Use an async IIFE so a rejected getSession() (Supabase not configured —
+    // lib/supabase.ts falls back to a placeholder client — or the network being
+    // unreachable) can't leave loading stuck at true. When that happened, the
+    // navbar rendered neither "Sign In" nor the account menu.
+    void (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        setUser(session?.user ?? null)
+      } catch (error) {
+        console.error("Could not read Supabase session:", error)
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
+    })()
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)

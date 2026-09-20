@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { timingSafeEqual } from "node:crypto"
 import { getSupabaseAdmin } from "@/lib/supabase-server"
 import { getBatchPrices, MarketDataNotConfiguredError, MarketDataRequestError } from "@/lib/market-data"
 import { sendAlertEmail } from "@/lib/email"
@@ -9,11 +10,23 @@ import { sendAlertEmail } from "@/lib/email"
 // GitHub Actions' schedule is free and can run every few minutes instead.
 export const maxDuration = 60
 
+/**
+ * Constant-time secret comparison. A plain `!==` leaks the secret one byte at a
+ * time through response timing.
+ */
+function secretsMatch(provided: string | undefined, expected: string): boolean {
+  if (!provided) return false
+  const providedBuffer = Buffer.from(provided)
+  const expectedBuffer = Buffer.from(expected)
+  if (providedBuffer.length !== expectedBuffer.length) return false
+  return timingSafeEqual(providedBuffer, expectedBuffer)
+}
+
 export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   const providedSecret = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
 
-  if (!cronSecret || providedSecret !== cronSecret) {
+  if (!cronSecret || !secretsMatch(providedSecret, cronSecret)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
   }
 

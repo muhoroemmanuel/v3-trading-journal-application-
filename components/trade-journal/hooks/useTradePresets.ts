@@ -18,9 +18,12 @@ export function useTradePresets() {
   const [presetName, setPresetName] = useState("")
   const [showPresetDialog, setShowPresetDialog] = useState(false)
 
+  // Mount-only browser hydration: localStorage does not exist during SSR, so
+  // this cannot move into the useState initializer.
   useEffect(() => {
     const saved = localStorage.getItem("tradePresets")
     if (saved) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only hydration, see above.
       try { setPresets(JSON.parse(saved)) } catch { /* ignore */ }
     }
   }, [])

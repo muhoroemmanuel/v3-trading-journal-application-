@@ -6,7 +6,9 @@ import * as React from 'react'
 import type { ToastActionElement, ToastProps } from '@/components/ui/toast'
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+// How long a dismissed toast stays mounted before being removed. Was 1000000
+// (~16 minutes), which left dismissed toasts in the DOM for the whole session.
+const TOAST_REMOVE_DELAY = 5000
 
 type ToasterToast = ToastProps & {
   id: string
